@@ -20,3 +20,6 @@ def test_get_darts_timeseries():
     from data_precessing.timeseries import prepare_timeseries_data
     data_dict = prepare_timeseries_data('training')
     print(data_dict.keys())
+    predicting_data_dict = prepare_timeseries_data('predicting')
+    print(predicting_data_dict.keys())
+    print(predicting_data_dict['train'].data_array().sizes)

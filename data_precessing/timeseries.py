@@ -160,7 +160,7 @@ def build_time_series(dataframe_tuple: tuple) -> tuple:
         raise
 
 
-def prepare_scalers(target_time_series: TimeSeries, past_covariate_series: TimeSeries, mode: str = 'training') -> tuple:
+def split_and_scaler_timeseries(target_time_series: TimeSeries, past_covariate_series: TimeSeries, mode: str = 'training') -> tuple:
     """为时间序列数据训练或加载缩放器。"""
     try:
         if mode not in ['training', 'predicting']:
@@ -200,7 +200,7 @@ def prepare_scalers(target_time_series: TimeSeries, past_covariate_series: TimeS
         raise
 
 
-def forecast_future_covariates(clean_data: pd.DataFrame) -> TimeSeries:
+def prepare_future_covariates(clean_data: pd.DataFrame) -> TimeSeries:
     """使用编码方案生成未来协变量数据。"""
     try:
         latest_date = clean_data['date'].max()
@@ -255,11 +255,11 @@ def prepare_timeseries_data(mode='training') -> dict:
         target_dataframe, covariate_dataframe = create_combined_dataframe(data_cleaned)
         target_timeseries, past_covariate_timeseries = build_time_series((target_dataframe, covariate_dataframe))
 
-        train, val, test, past_covariates, scaler_train, scaler_past = prepare_scalers(
+        train, val, test, past_covariates, scaler_train, scaler_past = split_and_scaler_timeseries(
             target_timeseries, past_covariate_timeseries, mode
         )
 
-        future_covariate_timeseries = forecast_future_covariates(data_cleaned)
+        future_covariate_timeseries = prepare_future_covariates(data_cleaned)
 
         processed_series_data = {
             "train": train,

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 # 训练数据保存目录
-data_dir = Path(__file__).parent.joinpath('data')
+data_dir = Path(__file__).parent.joinpath('data/precessed_data')
 DATA_SAVE_PATHS = {
     'train': data_dir / 'train.pkl',
     'val': data_dir / 'val.pkl',
@@ -14,6 +14,7 @@ DATA_SAVE_PATHS = {
     'scaler_past': data_dir / 'scaler_past.pkl',
 }
 
+# 验证集、训练集、测试集的长度。
 TIMESERIES_LENGTH = {
     'val_length': 60,
     'test_length': 60,
