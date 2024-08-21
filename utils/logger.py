@@ -8,6 +8,7 @@ import time
 from logging.handlers import SMTPHandler
 from concurrent_log_handler import ConcurrentRotatingFileHandler
 from dotenv import load_dotenv
+from pathlib import Path
 import os
 import colorlog
 
@@ -92,8 +93,8 @@ class LogManager(metaclass=SingletonMeta):
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.DEBUG)
 
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        log_file_path = os.path.join(script_dir, "logs/app.log")
+        script_dir = Path(__file__).parent.parent
+        log_file_path = script_dir /  "logs/app.log"
         os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
 
         logger.addHandler(self.create_file_handler(log_file_path))
