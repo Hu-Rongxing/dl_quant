@@ -31,9 +31,9 @@ def encode_and_scale_categorical_features(dataframe):
 def fill_missing_values(dataframe):
     """通过前向和后向填充来填充缺失值。"""
     dataframe.sort_values(by='time', ascending=True, inplace=True)
-    dataframe.filled = dataframe.ffill().bfill().reset_index(drop=True)
-    dataframe.filled.fillna(0, inplace=True)
-    return dataframe.filled
+    dataframe_filled = dataframe.bfill().ffill().reset_index(drop=True)
+    dataframe_filled.fillna(0, inplace=True)
+    return dataframe_filled
 
 
 def add_time_index_sequence(dataframe):
@@ -82,7 +82,7 @@ def generate_features(dataframe):
     dataframe['rolling_max_high_14'] = dataframe['high'].rolling(window=14).max()
     dataframe['rolling_min_low_14'] = dataframe['low'].rolling(window=14).min()
 
-    dataframe.fillna(method='bfill', inplace=True)
+    dataframe.bfill(inplace=True)
     dataframe.reset_index(inplace=True, drop=True)
 
     return dataframe
@@ -139,7 +139,9 @@ def create_combined_dataframe(clean_data: pd.DataFrame) -> tuple:
 
         covariate_df = clean_data.pivot(index="time", columns="stock_code", values=feature_columns)
         covariate_df.columns.names = ['variable', 'stock_code']
-        covariate_df.replace([np.inf, -np.inf], 0, inplace=True)
+        replace_dic = {np.inf: 0, -np.inf: 0}
+        covariate_df.replace(replace_dic, inplace=True)
+        covariate_df = covariate_df.infer_objects(copy=False)
 
         logger.info("成功创建组合数据")
         return target_df, covariate_df

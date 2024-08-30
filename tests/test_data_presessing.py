@@ -23,3 +23,4 @@ def test_get_darts_timeseries():
     predicting_data_dict = prepare_timeseries_data('predicting')
     print(predicting_data_dict.keys())
     print(predicting_data_dict['train'].data_array().sizes)
+    print(predicting_data_dict['test'].time_index)
