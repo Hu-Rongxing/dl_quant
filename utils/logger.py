@@ -223,6 +223,7 @@ if __name__ == "__main__":
         for _ in range(5):
             logger.trader("这是一条 TRADER 级别的信息")
         logger.error("这是一条错误信息")
+        logger.fatal("这是一条关键信息")
         time.sleep(16)
 
         1 / 0

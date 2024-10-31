@@ -2,7 +2,7 @@
 name = "dlquant"
 version = "0.1.0"
 description = ""
-authors = ["Your Name <you@example.com>"]
+authors = ["胡荣兴 <hurongxing@vip.qq.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
@@ -11,7 +11,11 @@ darts = "^0.30.0"
 python-dotenv = "^1.0.1"
 pytest = "^8.3.2"
 jupyterlab = "^4.2.4"
-
+optuna = "^4.0.0"
+ruptures = "^1.1.9"
+deap = "^1.4.1"
+seaborn = "^0.13.2"
+optuna-integration = {extras = ["pytorch-lightning"], version = "^4.0.0"}
 
 [build-system]
 requires = ["poetry-core"]
@@ -20,3 +24,10 @@ build-backend = "poetry.core.masonry.api"
 [[tool.poetry.source]]
 name = "tuna"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+
+

@@ -8,7 +8,7 @@ def test_get_targets():
 
 
 def test_get_stock_data():
-    from data_precessing.download_xt_data import get_data_from_local
+    from load_data.download_xt_data import get_data_from_local
     df = get_data_from_local()
     print('\n')
     print(df.head())
@@ -17,10 +17,16 @@ def test_get_stock_data():
 
 
 def test_get_darts_timeseries():
-    from data_precessing.timeseries import prepare_timeseries_data
+    from load_data.multivariate_timeseries import prepare_timeseries_data
     data_dict = prepare_timeseries_data('training')
     print(data_dict.keys())
     predicting_data_dict = prepare_timeseries_data('predicting')
     print(predicting_data_dict.keys())
     print(predicting_data_dict['train'].data_array().sizes)
     print(predicting_data_dict['test'].time_index)
+
+
+def test_get_data_from_local():
+    from load_data.download_xt_data import get_data_from_local
+    data = get_data_from_local()
+    data.to_csv("data/stock_data.csv")

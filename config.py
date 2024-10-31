@@ -18,5 +18,5 @@ DATA_SAVE_PATHS = {
 TIMESERIES_LENGTH = {
     'val_length': 60,
     'test_length': 60,
-    'header_length': 0
+    'header_length': 150
 }
