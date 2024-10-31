@@ -31,9 +31,9 @@ def get_pl_trainer_kwargs(full_training=True):
         max_epochs = 200
         batch_size = 64
     else:
-        limit_train_batches = 2
-        limit_val_batches = 2
-        max_epochs = 10
+        limit_train_batches = 32
+        limit_val_batches = 32
+        max_epochs = 5
         batch_size = 64
 
         # 仅显示训练和预测进度条

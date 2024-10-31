@@ -1,27 +1,36 @@
-
 #!/usr/bin/env python
 # coding: utf-8
 
 import torch
-from darts.models import LightGBMModel  # 导入 LightGBMModel
+from darts.models import LightGBMModel  # 导入 TFT 模型
 from sklearn.metrics import precision_score  # 用于计算精确率
 import matplotlib.pyplot as plt  # 用于绘图
 import optuna  # 用于超参数优化
 from pathlib import Path  # 用于处理文件路径
-import numpy as np  # 用于数值计算
+import matplotlib
 
 # 自定义设置
 from config import TIMESERIES_LENGTH  # 导入时间序列长度配置
 from load_data.multivariate_timeseries import generate_processed_series_data  # 导入数据加载函数
 from utils.logger import logger  # 导入日志记录器
+from models.params import get_pl_trainer_kwargs  # 导入训练参数配置函数
+
+# 设置浮点数矩阵乘法精度
+torch.set_float32_matmul_precision('medium')
 
 # 常量定义
-MODEL_NAME = "LightGBMModel"  # 模型名称
+MODEL_NAME = "TFTModel"  # 模型名称
 WORK_DIR = Path(f"logs/{MODEL_NAME}_logs").resolve()  # 工作目录
 PRED_STEPS = TIMESERIES_LENGTH["test_length"]  # 预测步长
+matplotlib.rcParams['font.sans-serif'] = ['SimHei']  # 设置字体为黑体
+matplotlib.rcParams['axes.unicode_minus'] = False  # 解决坐标轴负号显示问题
 
 # 准备训练和验证数据 (在循环外加载数据)
-data = generate_processed_series_data('training')  # 假设返回的数据包含train/test/past_covariates/future_covariates
+data = generate_processed_series_data('training')
+
+# 定义设备 (GPU if available, else CPU)
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 # 定义模型
 def define_model(trial):
@@ -35,13 +44,13 @@ def define_model(trial):
         LightGBMModel: 初始化的 LightGBMModel。
     """
     # 模型参数
-    lags = trial.suggest_int("lags", 1, 64)
-    lags_past_covariates = trial.suggest_int("lags_past_covariates", 1, 64)
-    lags_future_covariates = [0, -1, -2]
-    output_chunk_length = trial.suggest_int("output_chunk_length", 1, min(20, PRED_STEPS))
 
     # LightGBM 回归器的参数
     lgbm_params = {
+        "lags": trial.suggest_int("lags", 1, 64),
+        "lags_past_covariates": trial.suggest_int("lags_past_covariates", 1, 64),
+        "lags_future_covariates": [0, -1, -2],
+        "output_chunk_length": trial.suggest_int("output_chunk_length", 1, min(20, PRED_STEPS)),
         "learning_rate": trial.suggest_float("learning_rate", 0.001, 0.1),
         "num_leaves": trial.suggest_int("num_leaves", 31, 256),
         "n_estimators": trial.suggest_int("n_estimators", 50, 500),
@@ -53,28 +62,24 @@ def define_model(trial):
     }
 
     model = LightGBMModel(
-        lags=lags,
-        lags_past_covariates=lags_past_covariates,
-        lags_future_covariates=lags_future_covariates,
-        output_chunk_length=output_chunk_length,
-        verbose=-1,  # 关闭 LightGBM 的输出
+        verbose=True,  # 关闭 LightGBM 的输出
         **lgbm_params
     )
 
     return model
 
+
 def train_and_evaluate(model, data):
     """
-    训练和评估 LightGBMModel。
+    训练和评估 TFT 模型。
 
     Args:
-        model: LightGBMModel。
+        model: TFT 模型。
         data: 包含训练、验证和测试数据的数据字典。
 
     Returns:
         float: 精确率。
     """
-    # 训练模型
     model.fit(
         series=data['train'][-300:],  # 使用部分训练数据
         past_covariates=data['past_covariates'],  # 过去的协变量
@@ -84,34 +89,65 @@ def train_and_evaluate(model, data):
         val_future_covariates=data['future_covariates'],  # 验证集未来的协变量
     )
 
-    # 生成预测
-    forecast = model.predict(
-        n=PRED_STEPS,
-        series=data['train'],
-        past_covariates=data.get('past_covariates_test', None),
-        future_covariates=data.get('future_covariates_test', None),
+    # 使用 backtest 进行回测
+    backtest_series = model.historical_forecasts(
+        series=data['test'],
+        past_covariates=data['past_covariates'],
+        future_covariates=data['future_covariates'],
+        start=data['test'].time_index[- PRED_STEPS],
+        forecast_horizon=1,  # 预测 horizon 为 1
+        stride=1,  # 每一步进行回测
+        retrain=False
     )
 
     # 计算精确度
-    true_labels = data["test"][-PRED_STEPS:] # 真实标签
-    print(true_labels.time_index)
-    true_labels = true_labels.values().flatten().astype(int)
-    probabilities = forecast.values().flatten()  # 预测概率
+    true_labels = data["test"][-PRED_STEPS:].values().flatten().astype(int)  # 真实标签
+    print(data['test'].time_index[- PRED_STEPS])
+    print(data["test"].time_index)
+    print(data["test"][-PRED_STEPS:].time_index)
+    print(backtest_series[-PRED_STEPS:].time_index)
+    probabilities = backtest_series[-PRED_STEPS:].values().flatten()  # 预测概率
     binary_predictions = (probabilities > 0.5).astype(int)  # 二元预测
-    print(forecast.time_index)
 
     precision = precision_score(true_labels, binary_predictions)  # 计算精确率
-    logger.info(f"精度: {precision:.2%}")
-
+    logger.info(f"精度: {precision:.4%}")
     # 绘图 (可根据需要取消注释)
-    data["test"][-PRED_STEPS:].plot(label='实际值')
-    forecast.plot(label='预测值', lw=3, color="red", alpha=0.5)
-    plt.title("LightGBMModel 预测结果")
+    data["test"].plot(label='实际值')
+    backtest_series.plot(label='回测预测值', lw=3, color="red", alpha=0.5)  # 更醒目的回测线
+    plt.title("TFT Model Backtest - Last 20 Steps")
     plt.legend()
     plt.show()
     plt.close()
 
+    # 清理显存
+    del model
+    torch.cuda.empty_cache()
+
     return precision
+
+
+def plot_metrics(train_loss, val_loss, pred_series, test_data):
+    """
+    绘制训练损失、验证损失和预测结果。
+
+    Args:
+        train_loss: 训练损失列表。
+        val_loss: 验证损失列表。
+        pred_series: 预测序列。
+        test_data: 测试数据。
+    """
+    plt.figure()
+    plt.plot(train_loss, label='训练损失')
+    plt.plot(val_loss, label='验证损失')
+    plt.legend()
+    plt.show()
+
+    plt.figure()
+    test_data[-PRED_STEPS:].plot(label="实际数据")
+    pred_series.plot(label="预测结果")
+    plt.legend()
+    plt.show()
+
 
 def objective(trial):
     """
@@ -125,19 +161,19 @@ def objective(trial):
     """
     model = define_model(trial)  # 定义模型
     precision = train_and_evaluate(model, data)  # 训练和评估模型
-    logger.info(f"试验 {trial.number}: 精确率: {precision}")
-    logger.info(f"当前超参数： {trial.params}")
+    logger.info(f"试验{trial.number}: 最佳准确率: {study.best_value:.4%}")  # 记录最佳精确率
+    logger.info(f"当前准确率:{precision:.4%}；当前超参数： {trial.params}")  # 记录当前超参数
     return precision
+
 
 if __name__ == '__main__':
     study = optuna.create_study(
         direction="maximize",  # 最大化精确率
-        study_name="lightgbmmodel-precision-optimization",  # 研究名称
+        study_name="tftmodel-precision-optimization",  # 研究名称
         storage="sqlite:///data/optuna/optuna_study.db",  # 数据库路径
         load_if_exists=True  # 如果数据库存在则加载
     )
     study.optimize(objective, n_trials=50, n_jobs=1)  # 开始优化
 
-    logger.info(f"最佳超参数: {study.best_params}")  # 输出最佳超参数
-    logger.info(f"最佳精确率: {study.best_value:.4f}")  # 输出最佳精确率
-
+    logger.info(f"Best hyperparameters: {study.best_params}")  # 输出最佳超参数
+    logger.info(f"Best precision: {study.best_value:.4f}")  # 输出最佳精确率

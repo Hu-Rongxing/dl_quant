@@ -2,18 +2,16 @@
 # coding: utf-8
 
 import torch
-from torch.nn import BCEWithLogitsLoss  # 二元交叉熵损失函数，用于二分类问题
 from darts.models import TFTModel  # 导入 TFT 模型
 from sklearn.metrics import precision_score  # 用于计算精确率
 import matplotlib.pyplot as plt  # 用于绘图
 import optuna  # 用于超参数优化
 from pathlib import Path  # 用于处理文件路径
-import numpy as np  # 用于数值计算
+import matplotlib
 
 # 自定义设置
 from config import TIMESERIES_LENGTH  # 导入时间序列长度配置
 from load_data.multivariate_timeseries import generate_processed_series_data  # 导入数据加载函数
-from utils.model import loss_logger, WeightedMSELoss  # 导入自定义损失函数和损失记录器
 from utils.logger import logger  # 导入日志记录器
 from models.params import get_pl_trainer_kwargs  # 导入训练参数配置函数
 
@@ -24,12 +22,15 @@ torch.set_float32_matmul_precision('medium')
 MODEL_NAME = "TFTModel"  # 模型名称
 WORK_DIR = Path(f"logs/{MODEL_NAME}_logs").resolve()  # 工作目录
 PRED_STEPS = TIMESERIES_LENGTH["test_length"]  # 预测步长
+matplotlib.rcParams['font.sans-serif'] = ['SimHei']  # 设置字体为黑体
+matplotlib.rcParams['axes.unicode_minus'] = False  # 解决坐标轴负号显示问题
 
 # 准备训练和验证数据 (在循环外加载数据)
 data = generate_processed_series_data('training')
 
 # 定义设备 (GPU if available, else CPU)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 # 定义模型
 def define_model(trial):
@@ -44,7 +45,8 @@ def define_model(trial):
     """
     parameters = {
         "input_chunk_length": trial.suggest_int("input_chunk_length", 1, 64),  # 输入序列长度
-        "output_chunk_length": trial.suggest_int("output_chunk_length", 1, min(20, PRED_STEPS)),  # 输出序列长度，限制在 PRED_STEPS 以内
+        "output_chunk_length": trial.suggest_int("output_chunk_length", 1, min(20, PRED_STEPS)),
+        # 输出序列长度，限制在 PRED_STEPS 以内
         "hidden_size": trial.suggest_int("hidden_size", 8, 64),  # 隐藏层大小
         "dropout": trial.suggest_float("dropout", 0.0, 0.3),  # dropout 率
         "lstm_layers": trial.suggest_int("lstm_layers", 1, 4),  # LSTM 层数
@@ -96,7 +98,7 @@ def train_and_evaluate(model, data):
         series=data['test'],
         past_covariates=data['past_covariates'],
         future_covariates=data['future_covariates'],
-        start=data['train'].time_index[- PRED_STEPS],
+        start=data['test'].time_index[- PRED_STEPS],
         forecast_horizon=1,  # 预测 horizon 为 1
         stride=1,  # 每一步进行回测
         retrain=False
@@ -104,11 +106,15 @@ def train_and_evaluate(model, data):
 
     # 计算精确度
     true_labels = data["test"][-PRED_STEPS:].values().flatten().astype(int)  # 真实标签
+    print(data['test'].time_index[- PRED_STEPS])
+    print(data["test"].time_index)
+    print(data["test"][-PRED_STEPS:].time_index)
+    print(backtest_series[-PRED_STEPS:].time_index)
     probabilities = backtest_series[-PRED_STEPS:].values().flatten()  # 预测概率
     binary_predictions = (probabilities > 0.5).astype(int)  # 二元预测
 
     precision = precision_score(true_labels, binary_predictions)  # 计算精确率
-    logger.info(f"精度: {precision}")
+    logger.info(f"精度: {precision:.4%}")
     # 绘图 (可根据需要取消注释)
     data["test"].plot(label='实际值')
     backtest_series.plot(label='回测预测值', lw=3, color="red", alpha=0.5)  # 更醒目的回测线
@@ -159,8 +165,8 @@ def objective(trial):
     """
     model = define_model(trial)  # 定义模型
     precision = train_and_evaluate(model, data)  # 训练和评估模型
-    logger.info(f"试验{trial.number}: 最佳准确率: {study.best_value:.4f}")  # 记录最佳精确率
-    logger.info(f"当前准确率:{precision}；当前超参数： {trial.params}")  # 记录当前超参数
+    logger.info(f"试验{trial.number}: 最佳准确率: {study.best_value:.4%}")  # 记录最佳精确率
+    logger.info(f"当前准确率:{precision:.4%}；当前超参数： {trial.params}")  # 记录当前超参数
     return precision
 
 

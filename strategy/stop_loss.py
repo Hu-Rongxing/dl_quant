@@ -35,13 +35,13 @@ class StopLossProgram:
                 with open(CONFIG_PATH, 'rb') as f:
                     config = pickle.load(f)
                 self.profit_threshold = config.get('profit_threshold', 0.01)
-                self.drawdown_threshold = config.get('drawdown_threshold', 0.3)
-                self.stop_loss_threshold = config.get('stop_loss_threshold', -0.01)
+                self.drawdown_threshold = config.get('drawdown_threshold', 0.4)
+                self.stop_loss_threshold = config.get('stop_loss_threshold', -0.015)
             else:
                 # 默认阈值
                 self.profit_threshold = 0.01  # 止盈阈值
                 self.drawdown_threshold = 0.4  # 回撤阈值
-                self.stop_loss_threshold = -0.008  # 止损阈值
+                self.stop_loss_threshold = -0.014  # 止损阈值
                 logger.warning(f"未找到配置文件 {CONFIG_PATH}，使用默认阈值")
         except Exception as e:
             logger.exception(f"加载配置文件时出错: {e}")

@@ -16,7 +16,7 @@ def get_targets_list_from_csv() -> List[str]:
     :return: 返回一个包含有效股票代码的列表。
     """
     # 定义 CSV 文件路径
-    csv_file_path = Path(__file__).parent.parent / "data/investment_target/investment_targets.csv"
+    csv_file_path = Path(__file__).parent.parent / "data/investment_targets/investment_targets.csv"
     stock_list: List[str] = []  # 初始化股票代码列表
 
     try:
