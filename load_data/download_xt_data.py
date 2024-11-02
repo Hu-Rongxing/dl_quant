@@ -41,7 +41,8 @@ def download_history_data(
 def get_data_from_local(
         period: str = '1d',
         start_time: Optional[str] = None,
-        end_time: Optional[str] = None
+        end_time: Optional[str] = None,
+        stock_list: Optional[List[str]] = None,
 ) -> pd.DataFrame:
     """
     获取历史股票数据并返回为 pandas DataFrame。
@@ -49,11 +50,13 @@ def get_data_from_local(
     :param period: 时间周期，默认 '1d'
     :param start_time: 起始时间，格式为 'YYYYMMDD'，默认 '20160101'
     :param end_time: 结束时间，格式为 'YYYYMMDD%H%M%S'，默认当前日期
+    :param stock_list: 股票列表，格式为 ['xxxxxx.XX','xxxxxx.XX']，默认为None
     :return: 包含股票数据的 pandas DataFrame
     """
     start_time = start_time or '20160101'
     end_time = end_time or datetime.now().strftime('%Y%m%d%H%M%S')
-    stock_list = get_targets_list_from_csv()
+    if not stock_list:
+        stock_list = get_targets_list_from_csv()
 
     # 下载数据
     download_history_data(stock_list=stock_list, period=period, start_time=start_time, end_time=end_time,

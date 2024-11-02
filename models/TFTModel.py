@@ -173,7 +173,7 @@ def objective(trial):
 if __name__ == '__main__':
     study = optuna.create_study(
         direction="maximize",  # 最大化精确率
-        study_name="tftmodel-precision-optimization",  # 研究名称
+        study_name="tftmodel-precision-optimization-2",  # 研究名称
         storage="sqlite:///data/optuna/optuna_study.db",  # 数据库路径
         load_if_exists=True  # 如果数据库存在则加载
     )

@@ -23,9 +23,6 @@ date_to_index_mapper = {date: idx for idx, date in enumerate(unique_dates)}
 # price_data_df.columns = ['date', 'time', 'open', 'high', 'low', 'close', 'volume', 'amount',
 #        'settelementPrice', 'openInterest', 'preClose', 'suspendFlag',
 #        'stock_code']
-# TODO: 增加识别停牌功能，停牌证券不参与交易。
-# TODO: 处理停牌数据，suspendFlag=1, amount、volume为0， 价格为前一日价格。
-# TODO: 过滤股票。
 
 # 2. 清洗数据
 # 添加整数索引

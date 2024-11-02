@@ -30,15 +30,16 @@ def fit_model():
 
     # 模型参数 (根据之前的超参数优化结果)
     parameters = {
+
         'input_chunk_length': 56,  # 输入序列长度
         'output_chunk_length': 1,  # 输出序列长度
-        'hidden_size': 16,  # 隐藏层大小
-        'dropout': 0.163128150842862,  # dropout 率
+        'hidden_size': 18,  # 隐藏层大小
+        'dropout': 0.11,  # dropout 率
         'lstm_layers': 2,  # LSTM 层数
         'num_attention_heads': 1,  # 注意力头的数量
         'full_attention': False,  # 是否使用全注意力机制
         'feed_forward': 'ReLU',  # 前馈网络类型
-        'hidden_continuous_size': 7  # 连续变量隐藏层大小
+        'hidden_continuous_size': 11  # 连续变量隐藏层大小
     }
 
     # 初始化 TFT 模型

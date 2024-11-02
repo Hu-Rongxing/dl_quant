@@ -120,6 +120,10 @@ def buy_stock_async(stocks, strategy_name='', order_remark=''):
             logger.warning(f"股票已经涨停：{stock_code}")
             continue
 
+        if max_ask_price == 999998:
+            logger.warning(f"当前合约不可交易：{stock_code}")
+            continue
+
         if not max_ask_price:
             logger.warning(f"未能获得股票数据：{stock_code}")
             continue

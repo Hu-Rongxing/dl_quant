@@ -96,6 +96,9 @@ def generate_processed_series_data(mode: str = 'training') -> Dict[str, TimeSeri
             index="time_seq",
             columns="stock_code",
             values='target') # 目标变量数据框
+
+        # TODO: 在这里增加指数数据
+
         covariate_df = data_cleaned.pivot_table(
             index="time_seq",
             columns="stock_code",
@@ -112,6 +115,7 @@ def generate_processed_series_data(mode: str = 'training') -> Dict[str, TimeSeri
             freq=1,
             fillna_value=0
         ).astype(np.float32)  # 目标时间序列
+
         past_covariate_time_series = TimeSeries.from_dataframe(
             df = covariate_df,
             time_col=None,
@@ -147,7 +151,9 @@ def generate_processed_series_data(mode: str = 'training') -> Dict[str, TimeSeri
         else:
             raise ValueError("mode的值应为'training' 或 'predicting'")
 
-        train_scaled = train_scaler.transform(train_series)  # 转换训练数据
+        # 当目标值是0、1时， 不需要转换
+        # train_scaled = train_scaler.transform(train_series)  # 转换训练数据
+        train_scaled = train_series
         val_scaled = train_scaler.transform(val_series)  # 转换验证数据
         test_scaled = train_scaler.transform(test_series)  # 转换测试数据
         past_covariates_scaled = past_cov_scaler.transform(past_covariate_time_series)  # 转换过去的协变量
@@ -161,7 +167,6 @@ def generate_processed_series_data(mode: str = 'training') -> Dict[str, TimeSeri
         date_index = pd.DatetimeIndex(np.sort(all_dates))  # 创建日期时间索引
 
         future_encoded_features = rbf_encode_time_features(date_index)  # 使用 RBF 编码时间特征
-        # TODO: 检查日期索引到整数索引
         future_covariate_series = TimeSeries.from_dataframe(future_encoded_features).astype(np.float32)  # 未来协变量时间序列
 
         processed_series_data = {

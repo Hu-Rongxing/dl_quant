@@ -22,6 +22,8 @@ def test_stop_loss_main():
 
 def test_models():
     fit_model()
+
+def test_predict_market():
     predict_market()
 
 def test_buy_stock_async():

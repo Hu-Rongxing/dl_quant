@@ -59,6 +59,11 @@ def get_max_ask_price(stock_code):
             if data[stock_code]['lastPrice'] == instrument["UpStopPrice"]:
                 logger.warning(f"{stock_code}涨停")
                 return 999999
+
+            if not instrument['IsTrading']:
+                logger.error(f"【{stock_code}】合约不可交易！")
+                # TODO: 判断合约是否可交易。如果测试没有报错，返回999998
+                # return 999998
             # 不超过涨停价
             if instrument["UpStopPrice"] > 0:
                 max_ask_price = min(max_ask_price, instrument["UpStopPrice"])
