@@ -154,6 +154,9 @@ def start_xt_client_task():
 
 
 if __name__ == '__main__':
+
+    start_xt_client()
+
     # 创建调度器  
     scheduler = BackgroundScheduler()
 

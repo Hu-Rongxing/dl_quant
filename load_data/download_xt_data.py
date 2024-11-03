@@ -2,10 +2,11 @@ import os
 from datetime import datetime
 import pandas as pd
 import xtquant.xtdata as xtdata
+from typing import List, Optional
+# 自定义
+from strategy.qmt_monitor import start_xt_client
 from utils.data import get_targets_list_from_csv
 from utils.logger import logger
-from typing import List, Optional
-
 
 def download_history_data(
         stock_list: Optional[List[str]] = None,
@@ -36,6 +37,8 @@ def download_history_data(
             logger.info(f"成功下载股票数据：{stock}")
         except Exception as e:
             logger.error(f"下载股票数据失败：{stock}，错误信息：{e}")
+            start_xt_client()
+
 
 
 def get_data_from_local(

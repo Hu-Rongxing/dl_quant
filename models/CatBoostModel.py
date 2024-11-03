@@ -1,151 +1,187 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from darts.models import XGBModel  # 导入 XGBModel
-from darts.utils.callbacks import TQDMProgressBar  # 使用正确的进度条类名
-from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
-import matplotlib.pyplot as plt
+import torch
+from darts.models import CatBoostModel  # 导入 CatBoost 模型
+from sklearn.metrics import precision_score  # 用于计算精确率
+import matplotlib.pyplot as plt  # 用于绘图
+import optuna  # 用于超参数优化
+from pathlib import Path  # 用于处理文件路径
 import numpy as np
-import optuna
-from config import TIMESERIES_LENGTH
-from load_data.multivariate_timeseries import prepare_timeseries_data
-from utils.model import LossLogger
+import matplotlib
 
-# 初始化损失记录器和进度条
-loss_logger = LossLogger()
-progress_bar = TQDMProgressBar()  # 修正类名
+# 自定义设置
+from config import TIMESERIES_LENGTH  # 导入时间序列长度配置
+from load_data.multivariate_timeseries import generate_processed_series_data  # 导入数据加载函数
+from utils.logger import logger  # 导入日志记录器
+
+# 设置浮点数矩阵乘法精度
+torch.set_float32_matmul_precision('medium')
+
+# 常量定义
+MODEL_NAME = "CatBoostModel"  # 更新模型名称
+WORK_DIR = Path(f"logs/{MODEL_NAME}_logs").resolve()  # 工作目录
+PRED_STEPS = TIMESERIES_LENGTH["test_length"]  # 预测步长
+matplotlib.rcParams['font.sans-serif'] = ['SimHei']  # 设置字体为黑体
+matplotlib.rcParams['axes.unicode_minus'] = False  # 解决坐标轴负号显示问题
 
 # 准备训练和验证数据
-data = prepare_timeseries_data('training')
+data = generate_processed_series_data('training')
 
-# 初始化 XGBModel，添加必要的参数
-model = XGBModel(
-    lags=3,  # 设置适当的滞后期
-    lags_past_covariates=[-1],  # 设置过去协变量的滞后期
-    lags_future_covariates=[0],  # 设置未来协变量的滞后期
-    # objective='multi:softprob',  # 设置 XGBoost 为多分类目标
-    num_class=3,  # 类别数量
-    random_state=42,  # 设置随机种子
-)
+# 定义设备 (GPU if available, else CPU)
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# 训练模型
-model.fit(
-    series=data['train'],
-    past_covariates=data['past_covariates'],
-    future_covariates=data['future_covariates'],
-    val_series=data['val'],
-    val_past_covariates=data['past_covariates'],
-    val_future_covariates=data['future_covariates'],
-    verbose=True,
-    # callbacks=[progress_bar],  # 添加进度条回调
-)
 
-# 进行预测
-pred_steps = TIMESERIES_LENGTH["test_length"]
-pred_input = data["test"][:-pred_steps]
+# 定义模型
+def define_model(trial):
+    future_lags = trial.suggest_int('lags_future_covariates', 1, 21)
 
-# 进行预测
-pred_series = model.predict(n=pred_steps, series=pred_input)
+    base_parameters = {
+        'lags': trial.suggest_int("lags", 1, 48),
+        'lags_past_covariates': trial.suggest_int('lags_past_covariates', 1, 48),
+        'lags_future_covariates': [-i for i in range(future_lags)],
+        'output_chunk_length': 1,
+        'output_chunk_shift': 0,
+        'add_encoders': None,
+        'likelihood': None,
+        'quantiles': None,
+        'multi_models': trial.suggest_categorical('multi_models', [True, False])
+    }
 
-# 获取预测值和真实值
-predicted_probs = pred_series.values()
-true_values = data["test"][-pred_steps:].values()
+    catboost_parameters = {
+        'iterations': trial.suggest_int("iterations", 100, 300),
+        'learning_rate': trial.suggest_float("learning_rate", 0.01, 0.1, log=True),
+        'depth': trial.suggest_int("depth", 3, 8),
+        'l2_leaf_reg': trial.suggest_float("l2_leaf_reg", 1e-8, 1.0, log=True),
+        'border_count': trial.suggest_int("border_count", 32, 255),
+        # 'loss_function': 'CrossEntropy',  # 确保这里是分类损失
+        'cat_features': [],  # 如有需要，正确添加类别特征
+    }
 
-# 将预测概率转换为预测标签
-predicted_labels = np.argmax(predicted_probs, axis=1)
-true_labels = true_values.astype(int).flatten()
+    parameters = {**base_parameters, **catboost_parameters}
+    return CatBoostModel(**parameters, verbose=1)
 
-# 输出分类报告和准确率
-print("分类报告：\n", classification_report(true_labels, predicted_labels))
-print("准确率:", accuracy_score(true_labels, predicted_labels))
 
-# 绘制混淆矩阵
-conf_matrix = confusion_matrix(true_labels, predicted_labels)
-plt.figure(figsize=(8, 6))
-plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Blues)
-plt.title('混淆矩阵')
-plt.colorbar()
-tick_marks = [-1, 0, 1]
-plt.xticks([0, 1, 2], tick_marks)
-plt.yticks([0, 1, 2], tick_marks)
-plt.ylabel('真实标签')
-plt.xlabel('预测标签')
-plt.show()
-
-# 定义用于超参数优化的目标函数
-def objective(trial):
-    max_depth = trial.suggest_int("max_depth", 3, 10)
-    learning_rate = trial.suggest_loguniform("learning_rate", 1e-4, 1e-1)
-    n_estimators = trial.suggest_int("n_estimators", 100, 1000)
-    subsample = trial.suggest_uniform('subsample', 0.6, 1.0)
-    colsample_bytree = trial.suggest_uniform('colsample_bytree', 0.6, 1.0)
-
-    # 使用建议的超参数初始化模型
-    model = XGBModel(
-        lags=3,
-        lags_past_covariates=[-1],
-        lags_future_covariates=[0],
-        max_depth=max_depth,
-        learning_rate=learning_rate,
-        n_estimators=n_estimators,
-        subsample=subsample,
-        colsample_bytree=colsample_bytree,
-        objective='multi:softprob',
-        num_classes=3,
-        random_state=42,
-    )
-
-    # 训练模型
-    model.fit(
-        series=data['train'],
-        past_covariates=data['past_covariates'],
-        future_covariates=data['future_covariates'],
-        val_series=data['val'],
-        val_past_covariates=data['past_covariates'],
-        val_future_covariates=data['future_covariates'],
-        verbose=False,
-        callbacks=[progress_bar],  # 添加进度条回调
-    )
-
-    # 进行预测
-    pred_steps = TIMESERIES_LENGTH["test_length"]
-    pred_input = data["test"][:-pred_steps]
-
-    pred_series = model.predict(n=pred_steps, series=pred_input)
-
-    predicted_probs = pred_series.values()
-    true_values = data["test"][-pred_steps:].values()
-
-    predicted_indices = np.argmax(predicted_probs, axis=1)
-    true_indices = true_values.astype(int).flatten()
-
-    predicted_labels = [inverse_label_mapping[idx] for idx in predicted_indices]
-    true_labels = [inverse_label_mapping[idx] for idx in true_indices]
-
-    # 计算准确率作为优化目标（越大越好）
-    accuracy = accuracy_score(true_labels, predicted_labels)
-    print(f"本次试验的准确率: {accuracy:.4f}")
-
-    return accuracy  # 返回准确率
-
-def delete_study(study_name, storage_url):
+def train_and_evaluate(model, data):
+    """训练和评估 CatBoost 模型"""
+    precision = 0.0
     try:
-        optuna.delete_study(study_name=study_name, storage=storage_url)
-        print(f"成功删除 study：{study_name}")
-    except KeyError:
-        print(f"找不到 study：{study_name}")
+        model.fit(
+            series=data['train'][-200:],
+            past_covariates=data['past_covariates'],
+            future_covariates=data['future_covariates'],
+            val_series=data['val'],
+            val_past_covariates=data['past_covariates'],
+            val_future_covariates=data['future_covariates'],
+        )
+
+        # 使用 backtest 进行回测
+        backtest_series = model.historical_forecasts(
+            series=data['test'],
+            past_covariates=data['past_covariates'],
+            future_covariates=data['future_covariates'],
+            start=data['test'].time_index[-PRED_STEPS],
+            forecast_horizon=1,
+            stride=1,
+            retrain=False
+        )
+
+        true_labels = data["test"][-PRED_STEPS:].values().flatten().astype(int)
+        probabilities = backtest_series[-PRED_STEPS:].values().flatten()
+        binary_predictions = (probabilities > 0.5).astype(int)
+
+        precision = precision_score(true_labels, binary_predictions)
+
+        # 绘图
+        plt.figure(figsize=(12, 6))
+        data["test"][-PRED_STEPS * 2:].plot(label='实际值')
+        backtest_series[-PRED_STEPS * 2:].plot(label='预测值', lw=2, color="red", alpha=0.6)
+        plt.title(f"CatBoostModel 预测结果 (精确率: {precision:.4f})")
+        plt.legend()
+        plt.show()
+        plt.close()
+
+    except Exception as e:
+        logger.error(f"训练过程中出现错误: {str(e)}")
+
+    # 清理内存
+    del model
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    return precision
+
+
+def check_data_quality(data):
+    """检查数据质量"""
+    logger.info("检查数据质量...")
+    for key in ['train', 'val', 'test']:
+        if key in data:
+            series = data[key]
+            values = series.values()
+            logger.info(f"\n{key} 数据统计:")
+            logger.info(f"形状: {values.shape}")
+            logger.info(f"唯一值数量: {len(np.unique(values))}")
+            logger.info(f"最小值: {np.min(values)}")
+            logger.info(f"最大值: {np.max(values)}")
+            logger.info(f"均值: {np.mean(values)}")
+            logger.info(f"标准差: {np.std(values)}")
+            logger.info(f"缺失值数量: {np.isnan(values).sum()}")
+            if len(values.shape) > 1:
+                constant_cols = np.where(np.std(values, axis=0) == 0)[0]
+                if len(constant_cols) > 0:
+                    logger.warning(f"发现常量列: {constant_cols}")
+
+    if 'past_covariates' in data:
+        logger.info("\n过去协变量统计:")
+        logger.info(f"形状: {data['past_covariates'].values().shape}")
+
+    if 'future_covariates' in data:
+        logger.info("\n未来协变量统计:")
+        logger.info(f"形状: {data['future_covariates'].values().shape}")
+
+
+def objective(trial):
+    model = define_model(trial)  # 创建模型
+    precision = train_and_evaluate(model, data)  # 训练并评估模型
+    logger.info(f"试验{trial.number}: 当前准确率:{precision:.4%}；当前超参数： {trial.params}")  # 记录当前超参数
+    return precision  # 返回精确率作为优化目标
+
 
 if __name__ == '__main__':
-    delete_study("xgbmodel-optimization", "sqlite:///data/optuna/optuna_study.db")
+    # 检查数据质量
+    check_data_quality(data)
 
-    # 创建一个新的 Optuna study 并开始优化
+    # 创建工作目录
+    WORK_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 设置优化器
     study = optuna.create_study(
         direction="maximize",
-        study_name="xgbmodel-optimization",
+        study_name="catboost-precision-optimization-2",
         storage="sqlite:///data/optuna/optuna_study.db",
         load_if_exists=True,
+        sampler=optuna.samplers.TPESampler(seed=42)
     )
-    study.optimize(objective, n_trials=50)
 
-    print("最佳超参数: ", study.best_params)
-    print("最佳准确率: ", study.best_value)
+    # 添加提前停止
+    study.optimize(
+        objective,  # 目标函数
+        n_trials=50,
+        n_jobs=1,
+        catch=(Exception,)
+    )
+
+    # 输出结果
+    logger.info("优化完成!")
+    logger.info(f"最佳超参数: {study.best_params}")
+    logger.info(f"最佳精确率: {study.best_value:.4f}")
+
+    # 可视化优化结果
+    try:
+        optuna.visualization.plot_optimization_history(study)
+        plt.show()
+        optuna.visualization.plot_param_importances(study)
+        plt.show()
+    except Exception as e:
+        logger.error(f"可视化过程中出现错误: {str(e)}")

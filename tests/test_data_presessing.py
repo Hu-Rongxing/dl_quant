@@ -16,17 +16,19 @@ def test_get_stock_data():
     print(df.shape)
 
 
-def test_get_darts_timeseries():
-    from load_data.multivariate_timeseries import prepare_timeseries_data
-    data_dict = prepare_timeseries_data('training')
-    print(data_dict.keys())
-    predicting_data_dict = prepare_timeseries_data('predicting')
-    print(predicting_data_dict.keys())
-    print(predicting_data_dict['train'].data_array().sizes)
-    print(predicting_data_dict['test'].time_index)
-
 
 def test_get_data_from_local():
     from load_data.download_xt_data import get_data_from_local
     data = get_data_from_local()
     data.to_csv("data/stock_data.csv")
+
+def test_generate_processed_series_data():
+    from load_data.multivariate_timeseries import generate_processed_series_data
+    generate_processed_series_data()
+
+
+def test_read_max_profile():
+    from strategy.stop_loss import StopLossProgram
+    p = StopLossProgram()
+    p.load_max_profit()
+    print(p.max_profit)

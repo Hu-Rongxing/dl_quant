@@ -20,10 +20,14 @@ def test_monitor_functions():
 def test_stop_loss_main():
     stop_loss_main()
 
-def test_models():
+def test_fit_models():
     fit_model()
 
 def test_predict_market():
+    predict_market()
+
+def test_fit_and_predict():
+    fit_model()
     predict_market()
 
 def test_buy_stock_async():

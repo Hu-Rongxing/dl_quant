@@ -104,7 +104,7 @@ class LogManager(metaclass=SingletonMeta):
         return logger
 
     def create_file_handler(self, log_file_path):
-        file_handler = ConcurrentRotatingFileHandler(log_file_path, "a", 512 * 1024, 10)
+        file_handler = ConcurrentRotatingFileHandler(log_file_path, "a", 3* 1024 * 1024, 10)
         file_formatter = logging.Formatter(
             '%(asctime)s | %(levelname)-8s | %(module)s:%(lineno)d - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'

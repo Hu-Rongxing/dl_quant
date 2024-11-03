@@ -1,183 +1,166 @@
-#!/usr/bin/env python
-# coding: utf-8
-
 import torch
-from darts.models import TFTModel  # 导入 TFT 模型
-from sklearn.metrics import precision_score  # 用于计算精确率
-import matplotlib.pyplot as plt  # 用于绘图
-import optuna  # 用于超参数优化
-from pathlib import Path  # 用于处理文件路径
-import matplotlib
+from darts.models import TFTModel
+from sklearn.metrics import precision_score
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
+import optuna
+from pathlib import Path
+from config import TIMESERIES_LENGTH
+from load_data.multivariate_timeseries import generate_processed_series_data
+from utils.logger import logger
+from models.params import get_pl_trainer_kwargs, loss_logger
 
-# 自定义设置
-from config import TIMESERIES_LENGTH  # 导入时间序列长度配置
-from load_data.multivariate_timeseries import generate_processed_series_data  # 导入数据加载函数
-from utils.logger import logger  # 导入日志记录器
-from models.params import get_pl_trainer_kwargs  # 导入训练参数配置函数
-
-# 设置浮点数矩阵乘法精度
 torch.set_float32_matmul_precision('medium')
 
-# 常量定义
-MODEL_NAME = "TFTModel"  # 模型名称
-WORK_DIR = Path(f"logs/{MODEL_NAME}_logs").resolve()  # 工作目录
-PRED_STEPS = TIMESERIES_LENGTH["test_length"]  # 预测步长
-matplotlib.rcParams['font.sans-serif'] = ['SimHei']  # 设置字体为黑体
-matplotlib.rcParams['axes.unicode_minus'] = False  # 解决坐标轴负号显示问题
+MODEL_NAME = "TFTModel"
+WORK_DIR = Path(f"logs/{MODEL_NAME}_logs").resolve()
+PRED_STEPS = TIMESERIES_LENGTH["test_length"]
 
-# 准备训练和验证数据 (在循环外加载数据)
+# 准备训练和验证数据
 data = generate_processed_series_data('training')
 
-# 定义设备 (GPU if available, else CPU)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-# 定义模型
 def define_model(trial):
-    """
-    定义 TFT 模型并根据 Optuna Trial 建议的参数进行初始化。
-
-    Args:
-        trial: Optuna Trial 对象，用于建议超参数。
-
-    Returns:
-        TFTModel: 初始化的 TFT 模型。
-    """
     parameters = {
-        "input_chunk_length": trial.suggest_int("input_chunk_length", 1, 64),  # 输入序列长度
+        "input_chunk_length": trial.suggest_int("input_chunk_length", 1, 64),
         "output_chunk_length": trial.suggest_int("output_chunk_length", 1, min(20, PRED_STEPS)),
-        # 输出序列长度，限制在 PRED_STEPS 以内
-        "hidden_size": trial.suggest_int("hidden_size", 8, 64),  # 隐藏层大小
-        "dropout": trial.suggest_float("dropout", 0.0, 0.3),  # dropout 率
-        "lstm_layers": trial.suggest_int("lstm_layers", 1, 4),  # LSTM 层数
-        "num_attention_heads": trial.suggest_int("num_attention_heads", 1, 4),  # 注意力头数
-        "full_attention": trial.suggest_categorical("full_attention", [True, False]),  # 是否使用全注意力机制
-        "feed_forward": trial.suggest_categorical("feed_forward", ['GatedResidualNetwork', 'ReLU']),  # 前馈网络类型
-        "hidden_continuous_size": trial.suggest_int("hidden_continuous_size", 4, 32)  # 连续变量隐藏层大小
+        "hidden_size": trial.suggest_int("hidden_size", 8, 64),
+        "dropout": trial.suggest_float("dropout", 0.0, 0.3),
+        "lstm_layers": trial.suggest_int("lstm_layers", 1, 4),
+        "num_attention_heads": trial.suggest_int("num_attention_heads", 1, 4),
+        "full_attention": trial.suggest_categorical("full_attention", [True, False]),
+        "feed_forward": trial.suggest_categorical("feed_forward", ['GatedResidualNetwork', 'ReLU']),
+        "hidden_continuous_size": trial.suggest_int("hidden_continuous_size", 4, 32)
     }
 
     model = TFTModel(
         **parameters,
-        # loss_fn=WeightedMSELoss(),  # 使用加权 MSE 损失函数
-        pl_trainer_kwargs=get_pl_trainer_kwargs(full_training=True),  # 获取 PyTorch Lightning 训练参数
-        work_dir=WORK_DIR,  # 工作目录
-        save_checkpoints=True,  # 保存检查点
-        force_reset=True,  # 强制重置模型
-        model_name=MODEL_NAME,  # 模型名称
-        batch_size=128,  # 批量大小
-        n_epochs=50,  # 训练轮数
-        random_state=42,  # 随机种子
-        log_tensorboard=False,  # 关闭 TensorBoard 记录
+        pl_trainer_kwargs=get_pl_trainer_kwargs(full_training=True),
+        work_dir=WORK_DIR,
+        save_checkpoints=True,
+        force_reset=True,
+        model_name=MODEL_NAME,
+        batch_size=128,
+        n_epochs=50,
+        random_state=42,
+        log_tensorboard=False,
     )
 
     return model
 
 
 def train_and_evaluate(model, data):
-    """
-    训练和评估 TFT 模型。
+    try:
+        model.fit(
+            series=data['train'][-300:],
+            past_covariates=data['past_covariates'],
+            future_covariates=data['future_covariates'],
+            val_series=data['val'],
+            val_past_covariates=data['past_covariates'],
+            val_future_covariates=data['future_covariates'],
+        )
+    except Exception as e:
+        logger.error(f"模型训练失败: {str(e)}")
+        return 0.0
 
-    Args:
-        model: TFT 模型。
-        data: 包含训练、验证和测试数据的数据字典。
-
-    Returns:
-        float: 精确率。
-    """
-    model.fit(
-        series=data['train'][-300:],  # 使用部分训练数据
-        past_covariates=data['past_covariates'],  # 过去的协变量
-        future_covariates=data['future_covariates'],  # 未来的协变量
-        val_series=data['val'],  # 验证数据
-        val_past_covariates=data['past_covariates'],  # 验证集过去的协变量
-        val_future_covariates=data['future_covariates'],  # 验证集未来的协变量
-    )
-
-    # 使用 backtest 进行回测
     backtest_series = model.historical_forecasts(
         series=data['test'],
         past_covariates=data['past_covariates'],
         future_covariates=data['future_covariates'],
-        start=data['test'].time_index[- PRED_STEPS],
-        forecast_horizon=1,  # 预测 horizon 为 1
-        stride=1,  # 每一步进行回测
+        start=data['test'].time_index[-PRED_STEPS],
+        forecast_horizon=1,
+        stride=1,
         retrain=False
     )
 
-    # 计算精确度
-    true_labels = data["test"][-PRED_STEPS:].values().flatten().astype(int)  # 真实标签
-    print(data['test'].time_index[- PRED_STEPS])
-    print(data["test"].time_index)
-    print(data["test"][-PRED_STEPS:].time_index)
-    print(backtest_series[-PRED_STEPS:].time_index)
-    probabilities = backtest_series[-PRED_STEPS:].values().flatten()  # 预测概率
-    binary_predictions = (probabilities > 0.5).astype(int)  # 二元预测
+    true_labels = data["test"][-PRED_STEPS:].values().flatten().astype(int)
+    probabilities = backtest_series[-PRED_STEPS:].values().flatten()
+    binary_predictions = (probabilities > 0.5).astype(int)
 
-    precision = precision_score(true_labels, binary_predictions)  # 计算精确率
-    logger.info(f"精度: {precision:.4%}")
-    # 绘图 (可根据需要取消注释)
-    data["test"].plot(label='实际值')
-    backtest_series.plot(label='回测预测值', lw=3, color="red", alpha=0.5)  # 更醒目的回测线
-    plt.title("TFT Model Backtest - Last 20 Steps")
-    plt.legend()
+    overall_precision = precision_score(true_labels, binary_predictions)
+    logger.info(f"整体精度: {overall_precision:.4%}")
+
+    # 使用用户提供的字体
+    font_path = 'C:/Windows/Fonts/msyh.ttc'  # 用户提供的字体文件路径
+    my_font = font_manager.FontProperties(fname=font_path)
+
+    # 绘制回测预测值
+    backtest_series.pd_dataframe().plot(label='回测预测值', lw=3, alpha=0.25)
+    plt.title("TFT Model Backtest - Last 20 Steps", fontproperties=my_font)
+    plt.legend(prop=my_font)  # 这里确保图例字体选择
     plt.show()
     plt.close()
 
-    # 清理显存
+    # 绘制训练损失和验证损失
+    plt.figure(figsize=(12, 6))
+    plt.plot(loss_logger.train_loss, label='训练损失', lw=3, color="red", alpha=1)  # 检查 val_loss
+    if hasattr(loss_logger, 'val_loss'):
+        plt.plot(loss_logger.val_loss, label='验证损失', lw=3, color="blue", alpha=1)
+    plt.title("训练损失和验证损失", fontproperties=my_font)
+    plt.legend(prop=my_font)
+    plt.show()
+
+    components_precision = {}
+    for component_idx in backtest_series.components:
+        component_true_labels = data['test'][component_idx][-PRED_STEPS:].values().flatten().astype(int)
+        component_probabilities = backtest_series[component_idx][-PRED_STEPS:].values().flatten()
+        component_predictions = (component_probabilities > 0.5).astype(int)
+
+        component_precision = precision_score(component_true_labels, component_predictions, zero_division=0)
+        components_precision[component_idx] = component_precision
+        logger.info(f"Component {component_idx} 精度: {component_precision:.4%}")
+
+    # 绘制每个组件的精确率
+    plt.figure(figsize=(12, 6))
+    plt.bar(list(components_precision.keys()), components_precision.values(), color='b', alpha=0.7)
+    plt.title(f"每个组件的精确率(总体精确率{overall_precision:.2%})", fontproperties=my_font)
+    plt.xlabel("组件索引", fontproperties=my_font)
+    plt.ylabel("精确率", fontproperties=my_font)
+    plt.ylim(0, 1)
+    plt.xticks(ticks=list(components_precision.keys()), labels=list(components_precision.keys()), rotation=45,
+               fontproperties=my_font)
+    plt.grid(axis='y')
+    plt.legend(prop=my_font)  # 确保图例字体选择
+    plt.show()
+    plt.close()
+
     del model
     torch.cuda.empty_cache()
 
-    return precision
-
-
-def plot_metrics(train_loss, val_loss, pred_series, test_data):
-    """
-    绘制训练损失、验证损失和预测结果。
-
-    Args:
-        train_loss: 训练损失列表。
-        val_loss: 验证损失列表。
-        pred_series: 预测序列。
-        test_data: 测试数据。
-    """
-    plt.figure()
-    plt.plot(train_loss, label='训练损失')
-    plt.plot(val_loss, label='验证损失')
-    plt.legend()
-    plt.show()
-
-    plt.figure()
-    test_data[-PRED_STEPS:].plot(label="实际数据")
-    pred_series.plot(label="预测结果")
-    plt.legend()
-    plt.show()
+    return overall_precision
 
 
 def objective(trial):
-    """
-    Optuna 的目标函数，用于优化超参数。
+    model = define_model(trial)
+    precision = train_and_evaluate(model, data)
 
-    Args:
-        trial: Optuna Trial 对象。
+    if precision is None:  # 确保只有在精度非None的情况下才记录
+        logger.error(f"试验{trial.number}失败，超参数: {trial.params}")
+        return 0.0  # 返回0.0或其他默认值，表示试验失败
 
-    Returns:
-        float: 精确率，作为优化的目标。
-    """
-    model = define_model(trial)  # 定义模型
-    precision = train_and_evaluate(model, data)  # 训练和评估模型
-    logger.info(f"试验{trial.number}: 最佳准确率: {study.best_value:.4%}")  # 记录最佳精确率
-    logger.info(f"当前准确率:{precision:.4%}；当前超参数： {trial.params}")  # 记录当前超参数
+    logger.info(f"试验{trial.number}: 当前精准率:{precision:.4%}; 最佳精准率{study.best_value:.4%}；\n当前超参数： {trial.params}")
     return precision
 
 
 if __name__ == '__main__':
-    study = optuna.create_study(
-        direction="maximize",  # 最大化精确率
-        study_name="tftmodel-precision-optimization-2",  # 研究名称
-        storage="sqlite:///data/optuna/optuna_study.db",  # 数据库路径
-        load_if_exists=True  # 如果数据库存在则加载
-    )
-    study.optimize(objective, n_trials=50, n_jobs=1)  # 开始优化
+    study_name = 'tftmodel-precision-optimization'
+    try:
+        # 尝试加载现有研究
+        study = optuna.load_study(
+            study_name=study_name,
+            storage='sqlite:///data/optuna/optuna_study.db'
+        )
+    except Exception as e:
+        print(f"加载研究时发生错误: {e}")
+        # 这里可以添加逻辑来处理研究不存在的情况，例如新建研究
+        study = optuna.create_study(
+            direction="maximize",
+            study_name=study_name,
+            storage="sqlite:///data/optuna/optuna_study.db"
+        )
+    study.optimize(objective, n_trials=100, n_jobs=1)
 
-    logger.info(f"Best hyperparameters: {study.best_params}")  # 输出最佳超参数
-    logger.info(f"Best precision: {study.best_value:.4f}")  # 输出最佳精确率
+    logger.info(f"Best hyperparameters: {study.best_params}")
+    logger.info(f"Best precision: {study.best_value:.4f}")

@@ -35,12 +35,12 @@ class StopLossProgram:
                 with open(CONFIG_PATH, 'rb') as f:
                     config = pickle.load(f)
                 self.profit_threshold = config.get('profit_threshold', 0.01)
-                self.drawdown_threshold = config.get('drawdown_threshold', 0.4)
-                self.stop_loss_threshold = config.get('stop_loss_threshold', -0.015)
+                self.drawdown_threshold = config.get('drawdown_threshold', 0.333)
+                self.stop_loss_threshold = config.get('stop_loss_threshold', -0.014)
             else:
                 # 默认阈值
                 self.profit_threshold = 0.01  # 止盈阈值
-                self.drawdown_threshold = 0.4  # 回撤阈值
+                self.drawdown_threshold = 0.333  # 回撤阈值
                 self.stop_loss_threshold = -0.014  # 止损阈值
                 logger.warning(f"未找到配置文件 {CONFIG_PATH}，使用默认阈值")
         except Exception as e:
@@ -165,7 +165,7 @@ class StopLossProgram:
                     logger.debug(f"{stock_code} 当前盈利为{current_profit:.2%}；回撤幅度为 {drawdown:.2%}")
 
                     if drawdown >= self.drawdown_threshold:
-                        self.sell_stock(stock_code, volume, 0, "止盈策略", f"收益率{current_profit:.2%}")
+                        self.sell_stock(stock_code, volume, 0, "止盈策略", f"收益率{current_profit:.2%}_回撤幅度{drawdown:.2%}")
                         logger.warning(
                             f"卖出 {stock_code}，当前收益率 {current_profit:.2%}，"  
                             f"最高收益率 {self.max_profit[stock_code]:.2%}"

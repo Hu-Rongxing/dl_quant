@@ -2,70 +2,17 @@ import numpy as np
 import pandas as pd
 from darts import TimeSeries
 from darts.dataprocessing.transformers import Scaler
+from pandas import DataFrame
 from xtquant import xtdata
 from pickle import dump, load
 from pathlib import Path
 from sklearn.preprocessing import MinMaxScaler
-from typing import Dict
+from typing import Dict, Tuple, Any
 
 from config import DATA_SAVE_PATHS, TIMESERIES_LENGTH
 from utils.logger import logger
 from load_data.download_xt_data import get_data_from_local
-
-
-def calculate_technical_indicators(group: pd.DataFrame) -> pd.DataFrame:
-    """计算技术指标，并处理缺失值"""
-    group = group.bfill().ffill()  # 先前向填充，再后向填充
-
-    # 计算未来三天的最高价和最低价
-    future_high = group['high'].rolling(window=3, min_periods=1).max().shift(-2)
-    future_low = group['low'].rolling(window=3, min_periods=1).min().shift(-2)
-
-    # 计算未来三天的最大涨幅和最小跌幅
-    max_increase = (future_high - group['close']) / group['close']
-    min_decrease = (group['close'] - future_low) / group['close']
-
-    # 生成目标变量
-    group['target'] = ((max_increase > 0.01) & (min_decrease > -0.01)).astype(int)
-
-    # 计算移动平均线 (MA)
-    group['ma_3'] = group['close'].rolling(window=7).mean()
-    group['ma_5'] = group['close'].rolling(window=14).mean()
-    group['ma_10'] = group['close'].rolling(window=21).mean()
-
-    # 计算指数移动平均线 (EMA)
-    group['ema_5'] = group['close'].ewm(span=12, adjust=False).mean()
-    group['ema_10'] = group['close'].ewm(span=26, adjust=False).mean()
-
-    # 平均价格
-    # 计算平均价格 ave_price
-    group['ave_price'] = np.where(group['volume'] == 0, 0, group['amount'] / (group['volume'] * 100))
-    group = group.bfill().ffill()
-
-    return group
-
-
-def process_dataframe() -> pd.DataFrame:
-    """加载并处理原始数据，计算技术指标"""
-    try:
-        dataframe = get_data_from_local()
-        dataframe.sort_values(by=['stock_code', 'time'], ascending=True, inplace=True)
-        dataframe.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-        # 生成整数序列
-        date_to_int_mapper = {d: i for i, d in enumerate(dataframe['time'].unique())}
-        dataframe['time_seq'] = dataframe['time'].map(date_to_int_mapper)
-
-        # 按股票代码分组，计算技术指标并填充缺失值
-        dataframe = (dataframe.groupby('stock_code')
-                     .apply(calculate_technical_indicators, include_groups=False)
-                     .reset_index("stock_code", drop=False))
-
-        return dataframe
-
-    except Exception as e:
-        logger.error(f"数据处理失败 - {str(e)}")
-        raise
+from load_data.pandas_object_data import process_dataframe
 
 
 def generate_processed_series_data(mode: str = 'training') -> Dict[str, TimeSeries]:
@@ -82,8 +29,8 @@ def generate_processed_series_data(mode: str = 'training') -> Dict[str, TimeSeri
         if mode not in ['training', 'predicting']:
             raise ValueError("模式必须是 'training' 或 'predicting'。")
 
-        data_cleaned = process_dataframe()
-        data_cleaned.reset_index(level='date', inplace=True)
+        data_cleaned, date_to_int_mapper = process_dataframe()
+        # data_cleaned.reset_index(level='date', inplace=True)
 
         data_cleaned.to_csv("data/precessed_data/data.csv")  # 保存清洗后的数据到 CSV 文件
 
@@ -97,14 +44,28 @@ def generate_processed_series_data(mode: str = 'training') -> Dict[str, TimeSeri
             columns="stock_code",
             values='target') # 目标变量数据框
 
-        # TODO: 在这里增加指数数据
-
         covariate_df = data_cleaned.pivot_table(
             index="time_seq",
             columns="stock_code",
             values=feature_columns
         )  # 协变量数据框
         covariate_df.columns.names = ['variable', 'stock_code']  # 设置列名
+
+        # #### 添加指数数据作为协变量  ###
+        # TODO: 在这里增加指数数据
+        stock_list = ['000001.SH', '399001.SZ', '399006.SZ']
+        index_data = get_data_from_local(stock_list=stock_list)
+        index_data = index_data.reset_index()
+        index_data = index_data[['time', 'open', 'high', 'low', 'close', 'amount', 'stock_code']]
+        index_data['time_seq'] = index_data['time'].map(date_to_int_mapper)
+        index_data_pivot = index_data.pivot(
+            index="time_seq",
+            columns="stock_code",
+            values=['open', 'high', 'low', 'close', 'amount']
+        )
+        index_data_pivot.columns.names = ['variable', 'stock_code']
+        covariate_df = covariate_df.join(index_data_pivot)
+        # ---------
 
         # 转换为 Darts TimeSeries 对象
         target_time_series = TimeSeries.from_dataframe(
@@ -151,11 +112,17 @@ def generate_processed_series_data(mode: str = 'training') -> Dict[str, TimeSeri
         else:
             raise ValueError("mode的值应为'training' 或 'predicting'")
 
+        # TODO: 应当注意这里，是分类任务，还是回归任务
         # 当目标值是0、1时， 不需要转换
-        # train_scaled = train_scaler.transform(train_series)  # 转换训练数据
-        train_scaled = train_series
+        train_scaled = train_scaler.transform(train_series)  # 转换训练数据
+        # train_scaled = train_series
         val_scaled = train_scaler.transform(val_series)  # 转换验证数据
+        # val_scaled = val_series
         test_scaled = train_scaler.transform(test_series)  # 转换测试数据
+        # test_scaled = test_series
+        # ------------
+
+
         past_covariates_scaled = past_cov_scaler.transform(past_covariate_time_series)  # 转换过去的协变量
 
         # 使用 RBF 编码时间特征来生成未来的协变量
