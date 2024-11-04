@@ -2,6 +2,7 @@ import time
 import multiprocessing
 import functools
 from apscheduler.schedulers.background import BackgroundScheduler
+from multiprocessing import Process
 
 # 导入您的函数  
 from load_data import download_history_data
@@ -89,10 +90,12 @@ def buying_strategy_task():
     """  
     买入策略的任务函数。  
     """
-    if is_trading_day():
-        buying_strategy()
-    else:
-        logger.info("今天不是交易日，跳过买入策略。")
+    logger.info('开始执行买入策略。')
+    process = Process(target=buying_strategy)
+    process.start()
+    logger.info('买入策略结束')
+    process.join()
+    logger.info('买入进程退出')
 
 
 @retry(max_attempts=3)
@@ -173,13 +176,13 @@ if __name__ == '__main__':
     # 然后在9:05执行fit_model_task，确保数据下载完成  
     scheduler.add_job(fit_model_task, 'cron', day_of_week='mon-fri', hour='9', minute='5', id='fit_model_task')
 
-    # 3. 每个交易日14:57先执行 download_history_data_task，再执行 buying_strategy_task。  
-    # 先在14:57执行download_history_data_task  
-    scheduler.add_job(download_history_data_task, 'cron', day_of_week='mon-fri', hour='14', minute='57',
-                      id='download_history_data_task_14_57')
+    # 3. 每个交易日14:57先执行 download_history_data_task，再执行 buying_strategy_task。
     # 然后在14:58执行buying_strategy_task，确保数据下载完成  
-    scheduler.add_job(buying_strategy_task, 'cron', day_of_week='mon-fri', hour='14', minute='58',
+    scheduler.add_job(buying_strategy_task, 'cron', day_of_week='mon-fri', hour='14', minute='57',
                       id='buying_strategy_task')
+
+    # scheduler.add_job(buying_strategy_task, 'cron', day_of_week='mon-fri', hour='20', minute='03',
+    #                   id='buying_strategy_task_test')
 
     # 4. 每个交易日9:20、11:35、15:05执行 generate_trading_report。  
     report_times = ['9:20', '11:35', '15:05']
@@ -188,7 +191,7 @@ if __name__ == '__main__':
         scheduler.add_job(generate_trading_report_task, 'cron', day_of_week='mon-fri', hour=hour, minute=minute,
                           id=f'generate_trading_report_{rt}')
 
-        # 5. 每个交易日交易时间段内，每10分钟检查一次 stop_loss_main 是否运行，若未运行则启动。
+    # 5. 每个交易日交易时间段内，每10分钟检查一次 stop_loss_main 是否运行，若未运行则启动。
     # 注意交易时间段为 9:30-11:30 和 13:00-15:00  
     # 设置在 9:30 到 11:30 和 13:00 到 15:00，每隔10分钟执行一次  
     scheduler.add_job(stop_loss_main_task, 'cron', day_of_week='mon-fri', hour='9-11', minute='30-59/10',

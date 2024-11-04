@@ -54,52 +54,49 @@ class StopLossProgram:
         """
         保存 max_profit 字典到文件，并在持仓变动时重置对应股票的最高收益率。
         """
-        with max_profit_lock:
-            try:
-                # 更新持仓信息
-                self.update_positions()
+        try:
+            # 更新持仓信息
+            self.update_positions()
 
-                # 重置已卖出股票的最高收益率
-                removed_stocks = set(self.max_profit.keys()) - set(self.positions.keys())
-                for stock_code in removed_stocks:
-                    self.max_profit.pop(stock_code, None)
-                    logger.info(f"重置 {stock_code} 的最高收益率")
+            # 重置已卖出股票的最高收益率
+            removed_stocks = set(self.max_profit.keys()) - set(self.positions.keys())
+            for stock_code in removed_stocks:
+                self.max_profit.pop(stock_code, None)
+                logger.info(f"重置 {stock_code} 的最高收益率")
 
-                # 保存更新后的 max_profit 字典到文件
-                with open(MAX_PROFIT_PATH, 'wb') as f:
-                    pickle.dump(self.max_profit, f)
-                logger.debug(f"已保存 max_profit 至 {MAX_PROFIT_PATH}")
-            except Exception as e:
-                logger.exception(f"保存 max_profit 时发生异常: {e}")
+            # 保存更新后的 max_profit 字典到文件
+            with open(MAX_PROFIT_PATH, 'wb') as f:
+                pickle.dump(self.max_profit, f)
+            logger.debug(f"已保存 max_profit 至 {MAX_PROFIT_PATH}")
+        except Exception as e:
+            logger.exception(f"保存 max_profit 时发生异常: {e}")
 
     def load_max_profit(self):
         """
         从文件加载 max_profit 字典
         """
-        with max_profit_lock:
-            try:
-                if MAX_PROFIT_PATH.exists():
-                    with open(MAX_PROFIT_PATH, 'rb') as f:
-                        self.max_profit = pickle.load(f)
-                    logger.debug(f"从 {MAX_PROFIT_PATH} 成功加载 max_profit{self.max_profit}")
-                else:
-                    self.max_profit = {}
-                    logger.warning(f"未找到 max_profit 文件 {MAX_PROFIT_PATH}，将使用空字典")
-            except Exception as e:
-                logger.exception(f"加载 max_profit 时发生异常: {e}")
+        try:
+            if MAX_PROFIT_PATH.exists():
+                with open(MAX_PROFIT_PATH, 'rb') as f:
+                    self.max_profit = pickle.load(f)
+                logger.debug(f"从 {MAX_PROFIT_PATH} 成功加载 max_profit{self.max_profit}")
+            else:
                 self.max_profit = {}
+                logger.warning(f"未找到 max_profit 文件 {MAX_PROFIT_PATH}，将使用空字典")
+        except Exception as e:
+            logger.exception(f"加载 max_profit 时发生异常: {e}")
+            self.max_profit = {}
 
     def update_positions(self):
         """
         更新持仓信息，只保留可用数量大于0的持仓。
         """
-        with self.positions_lock:
-            try:
-                positions = xt_trader.query_stock_positions(acc)
-                self.positions = {pos.stock_code: pos for pos in positions if pos.can_use_volume > 0}
-                logger.info(f"已更新持仓信息: {[pos.stock_code for pos in self.positions.values()]}")
-            except Exception as e:
-                logger.exception(f"更新持仓信息时发生异常: {e}")
+        try:
+            positions = xt_trader.query_stock_positions(acc)
+            self.positions = {pos.stock_code: pos for pos in positions if pos.can_use_volume > 0}
+            logger.info(f"已更新持仓信息: {[pos.stock_code for pos in self.positions.values()]}")
+        except Exception as e:
+            logger.exception(f"更新持仓信息时发生异常: {e}")
 
     def sell_stock(self, stock_code, quantity, price=0, strategy_name='', order_remark=''):
         """
@@ -165,7 +162,7 @@ class StopLossProgram:
                     logger.debug(f"{stock_code} 当前盈利为{current_profit:.2%}；回撤幅度为 {drawdown:.2%}")
 
                     if drawdown >= self.drawdown_threshold:
-                        self.sell_stock(stock_code, volume, 0, "止盈策略", f"收益率{current_profit:.2%}_回撤幅度{drawdown:.2%}")
+                        self.sell_stock(stock_code, volume, 0, "止盈策略", f"R{current_profit:.2%}_D{drawdown:.2%}")
                         logger.warning(
                             f"卖出 {stock_code}，当前收益率 {current_profit:.2%}，"  
                             f"最高收益率 {self.max_profit[stock_code]:.2%}"

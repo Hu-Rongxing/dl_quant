@@ -72,6 +72,7 @@ def buy_stock_async(stocks, strategy_name='', order_remark=''):
     买入股票函数：根据股票代码后缀确定所属市场并设置 order_type 后，异步发出买入指令。
     """
 
+    logger.info("查询资产状况。")
     for i in range(15):
         xt_trader = setup_xt_trader()
         asset = xt_trader.query_stock_asset(acc)
@@ -85,6 +86,7 @@ def buy_stock_async(stocks, strategy_name='', order_remark=''):
         logger.error(f"xt_trader.query_stock_asset返回值为None")
 
     cash = asset.cash
+    logger.info(f"可用现金{cash}。")
     positions = xt_trader.query_stock_positions(acc)
     positions_stocks = [pos.stock_code for pos in positions]
     # 将结果转换回列表（如果需要）
@@ -150,6 +152,7 @@ def buy_stock_async(stocks, strategy_name='', order_remark=''):
             strategy_name=strategy_name,
             order_remark=order_remark
         )
+        logger.info("完成提交。")
         if response < 0:
             logger.trader(
                 f'\n【提交下单失败！- 买入 - {strategy_name}】\n 股票【{stock_code}】，\n数量【{quantity}】，\n单价【{max_ask_price}】，\n金额【{quantity * max_ask_price}】，\n返回值【{response}】')
