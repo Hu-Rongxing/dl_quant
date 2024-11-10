@@ -3,11 +3,12 @@ import time
 import threading
 from multiprocessing import Manager
 from pathlib import Path
-from .trader import xt_trader, acc, setup_xt_trader
+# 自定义
 from xtquant import xtconstant, xtdata
+from .qmt_monitor import start_xt_client
+from .trader import xt_trader, acc, setup_xt_trader
 from utils.logger import logger
 from utils.data import get_targets_list_from_csv
-from .qmt_monitor import start_xt_client
 from utils.others import is_trading_day, is_transaction_hour
 
 # 配置文件路径
