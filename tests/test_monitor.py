@@ -35,3 +35,4 @@ def test_buy_stock_async():
     from strategy.trader import buy_stock_async
     buy_stock_async(["999999.SH", "000001.SZ"],strategy_name='买入策略', order_remark='策略买入。')
 
+
