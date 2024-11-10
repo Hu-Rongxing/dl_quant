@@ -2,16 +2,19 @@
 # coding: utf-8
 
 import torch
+from pytorch_lightning.callbacks import EarlyStopping
+from darts.utils.callbacks import TFMProgressBar
+from utils.model import LossLogger
 from darts.models import TFTModel  # 导入 TFT 模型
 from pathlib import Path  # 用于处理文件路径
 import matplotlib.pyplot as plt
-import datetime
 
 # 自定义设置
 from config import TIMESERIES_LENGTH  # 导入时间序列长度配置
 from load_data.multivariate_timeseries import generate_processed_series_data  # 导入数据加载函数
 from utils.logger import logger  # 导入日志记录器
-from models.params import get_pl_trainer_kwargs, loss_logger  # 导入训练参数配置函数
+from models.params import get_pl_trainer_kwargs  # 导入训练参数配置函数
+
 
 # 设置浮点数矩阵乘法精度，以提高计算性能
 torch.set_float32_matmul_precision('medium')
@@ -30,23 +33,43 @@ def fit_model():
     # 定义设备 (如果有 GPU 可用则使用，否则使用 CPU)
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    loss_logger = LossLogger()
+
+    progress_bar = TFMProgressBar(
+        enable_sanity_check_bar=False, enable_validation_bar=False
+    )
+
+    early_stopper = EarlyStopping(
+        monitor="val_loss",
+        patience=6,
+        min_delta=1e-6,
+        mode="min",
+    )
+
+    pl_trainer_kwargs = {
+        "gradient_clip_val": 1,  # 梯度剪裁，通过限制梯度的范围来稳定训练过程
+        "max_epochs": 200,
+        "accelerator": "auto",
+        "callbacks": [early_stopper, progress_bar, loss_logger],
+    }
+
     # 模型参数 (根据之前的超参数优化结果)
     parameters = {
-        'input_chunk_length': 64,  # 输入序列长度
-        'output_chunk_length': 9,  # 输出序列长度
-        'hidden_size': 19,  # 隐藏层大小
-        'dropout': 0.1,  # dropout 率
+        'input_chunk_length': 33,  # 输入序列长度
+        'output_chunk_length': 1,  # 输出序列长度
+        'hidden_size': 12,  # 隐藏层大小
+        'dropout': 0.26,  # dropout 率
         'lstm_layers': 1,  # LSTM 层数
         'num_attention_heads': 2,  # 注意力头的数量
-        'full_attention': False,  # 是否使用全注意力机制
-        'feed_forward': 'GatedResidualNetwork',  # 前馈网络类型
-        'hidden_continuous_size': 24  # 连续变量隐藏层大小
+        'full_attention': True,  # 是否使用全注意力机制
+        'feed_forward': 'ReLU',  # 前馈网络类型
+        'hidden_continuous_size': 5  # 连续变量隐藏层大小
     }
 
     # 初始化 TFT 模型
     model = TFTModel(
         **parameters,
-        pl_trainer_kwargs=get_pl_trainer_kwargs(full_training=True),  # 获取 PyTorch Lightning 训练参数
+        pl_trainer_kwargs=pl_trainer_kwargs,  # 获取 PyTorch Lightning 训练参数
         work_dir=WORK_DIR,  # 设置工作目录
         save_checkpoints=True,  # 训练过程中保存检查点
         force_reset=True,  # 强制重置模型（如果已有同名模型将被覆盖）
@@ -58,7 +81,7 @@ def fit_model():
     )
 
     # 训练模型
-    model.fit(
+    model = model.fit(
         series=data['train'],  # 训练数据序列
         past_covariates=data['past_covariates'],  # 过去的协变量
         future_covariates=data['future_covariates'],  # 未来的协变量
@@ -67,19 +90,27 @@ def fit_model():
         val_future_covariates=data['future_covariates'],  # 验证集未来的协变量
     )
 
+    # 提取训练和验证损失
+    train_losses = loss_logger.train_loss
+    val_losses = loss_logger.val_loss
+    min_length = min(len(train_losses), len(val_losses))
+    train_losses = train_losses[:min_length]
+    val_losses = val_losses[:min_length]
+    epochs = range(min_length)
+
 
     # 保存最佳模型
     model.save(str(MODEL_PATH))  # 保存模型到指定路径
 
-    # 损失可视化
-    # 训练结束后绘制损失图
-    plt.figure(figsize=(10, 6))
-    plt.plot(loss_logger.train_loss, label='Training Loss')
-    plt.plot(loss_logger.val_loss, label='Validation Loss')
-    plt.title(f'Training and Validation Loss 【{datetime.datetime.today()}】')
-    plt.xlabel('Epoch')
+    # 绘制损失图
+    plt.figure(figsize=(12, 6))
+    plt.plot(epochs, train_losses, label='Training Loss', color='blue')
+    plt.plot(epochs, val_losses, label='Validation Loss', color='orange')
+    plt.title('Training and Validation Loss')
+    plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
+    plt.grid()
     plt.show()
     plt.close()
 
