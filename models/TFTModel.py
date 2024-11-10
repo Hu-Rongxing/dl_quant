@@ -8,7 +8,7 @@ from pathlib import Path
 from config import TIMESERIES_LENGTH
 from load_data.multivariate_timeseries import generate_processed_series_data
 from utils.logger import logger
-from models.params import get_pl_trainer_kwargs, loss_logger
+from models.params import get_pl_trainer_kwargs
 
 torch.set_float32_matmul_precision('medium')
 
@@ -93,14 +93,6 @@ def train_and_evaluate(model, data):
     plt.show()
     plt.close()
 
-    # 绘制训练损失和验证损失
-    plt.figure(figsize=(12, 6))
-    plt.plot(loss_logger.train_loss, label='训练损失', lw=3, color="red", alpha=1)  # 检查 val_loss
-    if hasattr(loss_logger, 'val_loss'):
-        plt.plot(loss_logger.val_loss, label='验证损失', lw=3, color="blue", alpha=1)
-    plt.title("训练损失和验证损失", fontproperties=my_font)
-    plt.legend(prop=my_font)
-    plt.show()
 
     components_precision = {}
     for component_idx in backtest_series.components:
@@ -133,6 +125,8 @@ def train_and_evaluate(model, data):
 
 
 def objective(trial):
+
+
     model = define_model(trial)
     precision = train_and_evaluate(model, data)
 
