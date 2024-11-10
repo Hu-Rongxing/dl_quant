@@ -1,4 +1,5 @@
 
+
 def test_get_targets():
     from utils.data import get_targets_list_from_csv
     target_list = get_targets_list_from_csv()
@@ -16,11 +17,11 @@ def test_get_stock_data():
     print(df.shape)
 
 
-
 def test_get_data_from_local():
     from load_data.download_xt_data import get_data_from_local
     data = get_data_from_local()
     data.to_csv("data/stock_data.csv")
+
 
 def test_generate_processed_series_data():
     from load_data.multivariate_timeseries import generate_processed_series_data
@@ -32,3 +33,8 @@ def test_read_max_profile():
     p = StopLossProgram()
     p.load_max_profit()
     print(p.max_profit)
+
+def test_start_xttrader():
+    from strategy.trader import setup_xt_trader
+    xt_trader = setup_xt_trader()
+
