@@ -5,10 +5,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from multiprocessing import Process
 
 # 导入您的函数  
-from load_data import download_history_data
+from load_data import download_history_data, generate_processed_series_data
 from utils.others import is_trading_day, is_transaction_hour
 from strategy.stop_loss import stop_loss_main
-from models.TFTModel_dep import fit_model, predict_market
+from models.TSMixerModel_deploy import fit_model, predict_market
 from strategy.trader import buy_stock_async
 from strategy.qmt_monitor import start_xt_client
 from strategy.trader import generate_trading_report
@@ -81,6 +81,7 @@ def fit_model_task():
     """
     if is_trading_day():
         fit_model()
+        predict_market()
     else:
         logger.info("今天不是交易日，跳过模型训练。")
 
@@ -163,7 +164,10 @@ if __name__ == '__main__':
     # 创建调度器  
     scheduler = BackgroundScheduler()
 
-    # 添加任务  
+    # 添加任务
+
+    scheduler.add_job(generate_processed_series_data, 'cron', day_of_week='mon-fri', hour='8', minute='30',
+                      id='generate_processed_series_data')
 
     # 1. 每个交易日13:00、16:00执行 download_history_data。  
     scheduler.add_job(download_history_data_task, 'cron', day_of_week='mon-fri', hour='13,16', minute='0',

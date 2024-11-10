@@ -2,7 +2,7 @@
 from load_data import download_history_data, generate_processed_series_data
 from utils.others import is_trading_day, is_transaction_hour
 from strategy.stop_loss import stop_loss_main
-from models.TFTModel_dep import fit_model, predict_market
+from models.TSMixerModel_deploy import fit_model, predict_market
 from strategy.trader import buy_stock_async
 from strategy.qmt_monitor import start_xt_client
 from strategy.trader import generate_trading_report
@@ -27,6 +27,7 @@ def test_predict_market():
     predict_market()
 
 def test_fit_and_predict():
+    generate_processed_series_data()
     fit_model()
     predict_market()
 

@@ -2,14 +2,14 @@ from pytorch_lightning.callbacks import EarlyStopping
 from darts.utils.callbacks import TFMProgressBar
 from utils.model import LossLogger
 
-loss_logger = LossLogger()
+
 progress_bar = TFMProgressBar(
         enable_sanity_check_bar=False, enable_validation_bar=False
     )
 
 early_stopper = EarlyStopping(
             monitor="val_loss",
-            patience=10,
+            patience=5,
             min_delta=1e-6,
             mode="min",
     )
@@ -47,7 +47,7 @@ def get_pl_trainer_kwargs(full_training=True):
         "limit_train_batches": limit_train_batches,
         "limit_val_batches": limit_val_batches,
         "accelerator": "auto",
-        "callbacks": [early_stopper, progress_bar, loss_logger],
+        "callbacks": [early_stopper, progress_bar, LossLogger()],
     }
 
     return pl_trainer_kwargs
