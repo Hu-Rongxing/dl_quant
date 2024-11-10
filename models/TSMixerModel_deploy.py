@@ -2,153 +2,147 @@
 # coding: utf-8
 
 import torch
-import torch.nn as nn  # 需要导入 nn
-from torch.nn import BCEWithLogitsLoss
-from darts.models import TSMixerModel
-from sklearn.metrics import precision_score
+from pytorch_lightning.callbacks import EarlyStopping
+from darts.utils.callbacks import TFMProgressBar
+from utils.model import LossLogger
+from darts.models import TSMixerModel  # 导入 TFT 模型
+from pathlib import Path  # 用于处理文件路径
 import matplotlib.pyplot as plt
-import logging
-from pathlib import Path
-from dataclasses import dataclass
 
 # 自定义设置
-from config import TIMESERIES_LENGTH
-from load_data.multivariate_timeseries import prepare_timeseries_data
-from utils.model import loss_logger
-from utils.logger import logger  # 设置日志
-from models.params import get_pl_trainer_kwargs
+from config import TIMESERIES_LENGTH  # 导入时间序列长度配置
+from load_data.multivariate_timeseries import generate_processed_series_data  # 导入数据加载函数
+from utils.logger import logger  # 导入日志记录器
+from models.params import get_pl_trainer_kwargs  # 导入训练参数配置函数
 
 
-# Focal Loss 实现
-class FocalLoss(nn.Module):
-    def __init__(self, alpha=1.0, gamma=2.0, reduction='mean'):
-        super(FocalLoss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.reduction = reduction
-
-    def forward(self, inputs, targets):
-        BCE_loss = nn.BCEWithLogitsLoss(reduction='none')(inputs, targets)
-        pt = torch.exp(-BCE_loss)  # Probability of true class
-        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
-
-        if self.reduction == 'mean':
-            return F_loss.mean()
-        elif self.reduction == 'sum':
-            return F_loss.sum()
-        else:
-            return F_loss
-
-
-# 设置浮点数矩阵乘法精度
+# 设置浮点数矩阵乘法精度，以提高计算性能
 torch.set_float32_matmul_precision('medium')
 
 # 常量定义
-MODEL_NAME = "TSMixerModel"
-WORK_DIR = Path(f"logs/{MODEL_NAME}_logs").resolve()
-MODEL_SAVE_PATH = Path(f"models/{MODEL_NAME}_best_model").resolve()
+MODEL_NAME = "TSMixerModel"  # 模型名称
+WORK_DIR = Path(f"logs/{MODEL_NAME}_logs").resolve()  # 工作目录
+PRED_STEPS = TIMESERIES_LENGTH["test_length"]  # 预测步长
+MODEL_PATH = WORK_DIR / "best_tsmixer_model.pth"
 
 
-@dataclass
-class ModelParams:
-    input_chunk_length: int
-    output_chunk_length: int
-    hidden_size: int
-    dropout: float
+def fit_model():
+    # 准备预测数据 (加载用于预测的数据集)
+    data = generate_processed_series_data('predicting')
+
+    # 定义设备 (如果有 GPU 可用则使用，否则使用 CPU)
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    loss_logger = LossLogger()
+
+    progress_bar = TFMProgressBar(
+        enable_sanity_check_bar=False, enable_validation_bar=False
+    )
+
+    early_stopper = EarlyStopping(
+        monitor="val_loss",
+        patience=6,
+        min_delta=1e-6,
+        mode="min",
+    )
+
+    pl_trainer_kwargs = {
+        "gradient_clip_val": 1,  # 梯度剪裁，通过限制梯度的范围来稳定训练过程
+        "max_epochs": 500,
+        "accelerator": "auto",
+        "callbacks": [early_stopper, progress_bar, loss_logger],
+    }
+
+    # 模型参数 (根据之前的超参数优化结果)
+    parameters = {
+        'input_chunk_length': 37,
+        'output_chunk_length': 7,
+        'hidden_size': 495,
+        'dropout': 0.1,
+        'activation': 'SELU',
+        'num_blocks': 2}
 
 
-# 使用最佳超参数替代参数搜索
-best_params = ModelParams(
-    input_chunk_length=46,
-    output_chunk_length=12,
-    hidden_size=120,
-    dropout=0.1737067007307284
-)
-
-
-def define_model(params: ModelParams):
+    # 初始化 TFT 模型
     model = TSMixerModel(
-        input_chunk_length=params.input_chunk_length,
-        output_chunk_length=params.output_chunk_length,
-        hidden_size=params.hidden_size,
-        dropout=params.dropout,
-        loss_fn=FocalLoss(),  # 使用 Focal Loss
-        optimizer_cls=torch.optim.Adam,
-        pl_trainer_kwargs=get_pl_trainer_kwargs(full_training=True),
-        work_dir=WORK_DIR,
-        save_checkpoints=True,
-        force_reset=True,
-        model_name=MODEL_NAME,
-        batch_size=128,
-        n_epochs=50,
-        random_state=42,
-        log_tensorboard=False,
-    )
-    return model
-
-
-def sigmoid_torch(x):
-    return torch.sigmoid(torch.from_numpy(x)).numpy()
-
-
-def train_and_evaluate(model, data):
-    model.fit(
-        series=data['train'],
-        past_covariates=data['past_covariates'],
-        future_covariates=data['future_covariates'],
-        val_series=data['val'],
-        val_past_covariates=data['past_covariates'],
-        val_future_covariates=data['future_covariates'],
+        **parameters,
+        pl_trainer_kwargs=pl_trainer_kwargs,  # 获取 PyTorch Lightning 训练参数
+        work_dir=WORK_DIR,  # 设置工作目录
+        save_checkpoints=True,  # 训练过程中保存检查点
+        force_reset=True,  # 强制重置模型（如果已有同名模型将被覆盖）
+        model_name=MODEL_NAME,  # 模型名称
+        batch_size=128,  # 批量大小
+        n_epochs=50,  # 训练轮数
+        random_state=42,  # 随机种子，保证结果可复现
+        log_tensorboard=False,  # 是否记录到 TensorBoard
     )
 
-    # 清理显存
-    torch.cuda.empty_cache()
+    # 训练模型
+    model = model.fit(
+        series=data['train'],  # 训练数据序列
+        past_covariates=data['past_covariates'],  # 过去的协变量
+        future_covariates=data['future_covariates'],  # 未来的协变量
+        val_series=data['val'],  # 验证数据序列
+        val_past_covariates=data['past_covariates'],  # 验证集过去的协变量
+        val_future_covariates=data['future_covariates'],  # 验证集未来的协变量
+    )
 
-    # 测试集预测
-    pred_steps = TIMESERIES_LENGTH["test_length"]
-    pred_input = data["test"][:-pred_steps]
-    pred_series = model.predict(n=pred_steps, series=pred_input)
-
-    # 计算精确度
-    true_labels = data["test"][-pred_steps:].values()
-    sigmoid_pred = sigmoid_torch(pred_series.values())
-    binary_predictions = sigmoid_pred > 0.5
-    precision = precision_score(true_labels.flatten().astype(int), binary_predictions.flatten().astype(int))
-    logger.info(f"精确率：{precision}")
-
-    plot_metrics(loss_logger.train_loss, loss_logger.val_loss, pred_series, data["test"], pred_steps)
-
-    return precision
+    # 提取训练和验证损失
+    train_losses = loss_logger.train_loss
+    val_losses = loss_logger.val_loss
+    min_length = min(len(train_losses), len(val_losses))
+    train_losses = train_losses[:min_length]
+    val_losses = val_losses[:min_length]
+    epochs = range(min_length)
 
 
-def plot_metrics(train_loss, val_loss, pred_series, test_data, pred_steps):
-    plt.rcParams['font.sans-serif'] = ['SimHei']
-    plt.rcParams['axes.unicode_minus'] = False
+    # 保存最佳模型
+    model.save(str(MODEL_PATH))  # 保存模型到指定路径
 
-    plt.figure()
-    plt.plot(train_loss, label='训练损失')
-    plt.plot(val_loss, label='验证损失')
+    # 绘制损失图
+    plt.figure(figsize=(12, 6))
+    plt.plot(epochs, train_losses, label='Training Loss', color='blue')
+    plt.plot(epochs, val_losses, label='Validation Loss', color='orange')
+    plt.title('Training and Validation Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
     plt.legend()
+    plt.grid()
     plt.show()
     plt.close()
 
-    for stock in test_data.columns[:3]:
-        plt.figure()
-        test_data[-pred_steps:].data_array().sel(component=stock).plot(label=f"{stock} 实际数据")
-        pred_series.data_array().sel(component=stock).plot(label=f"{stock} 预测结果")
-        plt.legend()
-        plt.show()
-        plt.close()
+    return model
+
+
+def predict_market():
+    logger.info("下载预测数据")
+    data = generate_processed_series_data('predicting')
+    # 读取最佳模型
+    logger.info("读取最佳模型。")
+    model = TSMixerModel.load(str(MODEL_PATH))  # 从指定路径加载模型
+
+    # 进行预测
+    logger.info("预测……")
+    forecast = model.predict(
+        n=1,  # 预测的步数
+        series=data['train'],  # 用于生成预测的输入序列
+        past_covariates=data['past_covariates'],  # 过去的协变量
+        future_covariates=data['future_covariates'],  # 未来的协变量
+    )
+
+    # 处理预测结果
+    logger.info("生成买入列表")
+    result = forecast.pd_dataframe().T  # 将预测结果转换为 DataFrame 并转置
+    result = result.iloc[:, 0].sort_values(ascending=False)  # 对第一列数据按降序排序
+    high_confidence_indices = result[result > 0.5].index.to_list()  # 提取预测值大于 0.5 的索引列表
+
+    # 输出高置信度的预测结果索引
+    logger.trader(f"预测值大于 0.5 的索引列表: {high_confidence_indices}")
+    return high_confidence_indices
 
 
 if __name__ == '__main__':
-    data = prepare_timeseries_data('training', binary=True)
-    model = define_model(best_params)
-    precision = train_and_evaluate(model, data)
-
-    # 保存最佳训练模型
-    model.save(str(MODEL_SAVE_PATH))  # 使用 Darts 提供的保存方法
-    logger.info(f"模型已保存到: {MODEL_SAVE_PATH}")
-
-    logger.info(f"最佳超参数: {best_params}")
-    logger.info(f"最终精确率: {precision:.2%}")
+    # 主程序入口，如果需要，可以在这里添加其他执行代码
+    fit_model()
+    result = predict_market()
+    print(result)
