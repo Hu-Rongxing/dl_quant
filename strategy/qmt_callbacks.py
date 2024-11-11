@@ -5,6 +5,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
 import os
+
+from strategy.qmt_monitor import start_xt_client
 # 自定义包
 from utils.logger import logger
 from config import config
@@ -20,6 +22,7 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
         :return:
         """
         logger.warning("连接丢失，检查客户端是否启动。")
+        start_xt_client()
         # 交给错误处理程序处理。
         raise Exception("行情服务连接断开")
         # return None

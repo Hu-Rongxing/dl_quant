@@ -243,7 +243,9 @@ def start_xt_client():
         return xt_client
     except Exception as e:
         logger.error(e)
-        return None
+        xt_client = ProgramMonitor()
+        xt_client.restart_program()
+        return xt_client
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ from utils.data import get_max_ask_price
 from .qmt_callbacks import MyXtQuantTraderCallback
 from .qmt_monitor import ProgramMonitor
 from config.data_dic import order_type_dic
+from .qmt_monitor import start_xt_client
 
 
 # 提权
@@ -37,6 +38,7 @@ if not acc:
 
 
 def setup_xt_trader(acc=acc):
+    start_xt_client()
     callback = MyXtQuantTraderCallback()
 
     path = Path(config['xt_client']['program_dir']).parent.parent / 'userdata_mini/'
@@ -64,6 +66,8 @@ try:
     xt_trader = setup_xt_trader()
 except Exception as e:
     logger.critical("Critical error in main: ", exc_info=e)
+    xt_client = ProgramMonitor()
+    xt_client.restart_program()
     # xt_trader.subscribe(acc)
     xt_trader = setup_xt_trader()
 
