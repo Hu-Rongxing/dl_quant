@@ -165,18 +165,19 @@ if __name__ == '__main__':
     scheduler = BackgroundScheduler()
 
     # 添加任务
-
+    # 生成一次训练数据，让数据Scaler、数据维度与模型保持一致。
     scheduler.add_job(generate_processed_series_data, 'cron', day_of_week='mon-fri', hour='8', minute='30',
                       id='generate_processed_series_data')
 
     # 1. 每个交易日13:00、16:00执行 download_history_data。  
-    scheduler.add_job(download_history_data_task, 'cron', day_of_week='mon-fri', hour='13,16', minute='0',
+    scheduler.add_job(download_history_data_task, 'cron', day_of_week='mon-fri', hour='12,16', minute='30',
                       id='download_history_data_task_13_16')
 
     # 2. 每个交易日9:00先执行 download_history_data_task，再执行 fit_model_task。  
     # 先在9:00执行download_history_data_task  
     scheduler.add_job(download_history_data_task, 'cron', day_of_week='mon-fri', hour='9', minute='0',
                       id='download_history_data_task_9')
+
     # 然后在9:05执行fit_model_task，确保数据下载完成  
     scheduler.add_job(fit_model_task, 'cron', day_of_week='mon-fri', hour='9', minute='5', id='fit_model_task')
 
