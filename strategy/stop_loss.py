@@ -222,6 +222,7 @@ class StopLossProgram:
             last_update_time = manager.Value('d', time.time())
 
             stock_list = get_targets_list_from_csv()
+            stock_list = list(set(stock_list) | set(self.positions.keys()))
             logger.info(f"订阅行情 {stock_list}")
 
             xtdata.subscribe_whole_quote(

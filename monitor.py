@@ -210,8 +210,13 @@ if __name__ == '__main__':
     scheduler.add_job(start_xt_client_task, 'cron', day_of_week='mon-fri', hour='8-15', minute='*/10',
                       id='start_xt_client_task')
 
-    # 启动调度器  
-    scheduler.start()
+    logger.trader("程序启动，全部任务已添加。")
+
+    # 启动调度器
+    try:
+        scheduler.start()
+    except Exception as e:
+        logger.error(e)
     logger.info("任务调度器已启动。按 Ctrl+C 退出。")
 
     try:
