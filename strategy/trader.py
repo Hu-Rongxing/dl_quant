@@ -51,7 +51,7 @@ def setup_xt_trader(acc=acc):
     if connect_result < 0:
         app = ProgramMonitor()
         app.restart_program()
-        time.sleep(15)
+
         connect_result = xt_trader.connect()
         if connect_result < 0:
             raise RuntimeError('Failed to connect to XT')
@@ -65,6 +65,7 @@ try:
 except Exception as e:
     logger.critical("Critical error in main: ", exc_info=e)
     # xt_trader.subscribe(acc)
+    xt_trader = setup_xt_trader()
 
 
 def buy_stock_async(stocks, strategy_name='', order_remark=''):

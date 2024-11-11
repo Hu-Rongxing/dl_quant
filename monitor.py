@@ -159,7 +159,10 @@ def start_xt_client_task():
 
 if __name__ == '__main__':
 
-    start_xt_client()
+    try:
+        start_xt_client()
+    except Exception as e:
+        logger.error(e)
 
     # 创建调度器  
     scheduler = BackgroundScheduler()

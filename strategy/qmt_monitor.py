@@ -177,7 +177,11 @@ class ProgramMonitor:
                 # 查找并点击图像按钮
                 if not auto_login:
                     path = Path(__file__).parent.parent / "config/xt_login_button.PNG"
-                    finder.find_and_click_image_button(str(path))
+                    try:
+                        finder.find_and_click_image_button(str(path))
+                    except Exception as e:
+                        logger.error(e)
+                time.sleep(15)
 
     def stop_program(self):
         """停止指定名称的程序，确保操作在同一时刻只被一个进程执行"""
@@ -202,6 +206,7 @@ class ProgramMonitor:
         self.stop_program()
         time.sleep(5)  # 等待进程完全结束
         self.start_program()
+
 
     def monitor(self):
         """开始监控程序状态"""
@@ -231,11 +236,15 @@ class ProgramMonitor:
 
 
 def start_xt_client():
-    xt_client = ProgramMonitor()
-    xt_client.start_program()
-    time.sleep(30)
-    # xtdata.run()
-    return xt_client
+    try:
+        xt_client = ProgramMonitor()
+        xt_client.start_program()
+        # xtdata.run()
+        return xt_client
+    except Exception as e:
+        logger.error(e)
+        return None
+
 
 if __name__ == "__main__":
     monitor = ProgramMonitor()
