@@ -173,16 +173,15 @@ if __name__ == '__main__':
     scheduler.add_job(download_history_data_task, 'cron', day_of_week='mon-fri', hour='12,16', minute='30',
                       id='download_history_data_task_13_16')
 
-    # 2. 每个交易日9:00先执行 download_history_data_task，再执行 fit_model_task。  
+    # 2. 每个交易日9:00执行 fit_model_task。
     # 先在9:00执行download_history_data_task  
-    scheduler.add_job(download_history_data_task, 'cron', day_of_week='mon-fri', hour='9', minute='0',
-                      id='download_history_data_task_9')
+    # scheduler.add_job(download_history_data_task, 'cron', day_of_week='mon-fri', hour='9', minute='0',
+    #                   id='download_history_data_task_9')
 
     # 然后在9:05执行fit_model_task，确保数据下载完成  
-    scheduler.add_job(fit_model_task, 'cron', day_of_week='mon-fri', hour='9', minute='5', id='fit_model_task')
+    scheduler.add_job(fit_model_task, 'cron', day_of_week='mon-fri', hour='9', minute='0', id='fit_model_task')
 
-    # 3. 每个交易日14:57先执行 download_history_data_task，再执行 buying_strategy_task。
-    # 然后在14:58执行buying_strategy_task，确保数据下载完成  
+    # 3. 在14:58执行buying_strategy_task，确保数据下载完成
     scheduler.add_job(buying_strategy_task, 'cron', day_of_week='mon-fri', hour='14', minute='57',
                       id='buying_strategy_task')
 
