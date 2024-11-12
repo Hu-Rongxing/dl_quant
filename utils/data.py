@@ -78,13 +78,17 @@ def get_max_ask_price(stock_code):
             # 成交价等于涨停价时
             if data[stock_code]['lastPrice'] == instrument["UpStopPrice"]:
                 logger.warning(f"{stock_code}涨停")
-                # return 999999
+                return 999999
 
             if data[stock_code]['stockStatus'] in [0,10,11,12,14,15,16,17,20,21,22,23]:
                 logger.error(f"证券{stock_code}状态{SECURITY_STATUS.get(data[stock_code]['stockStatus'],"代码未知")}")
                 # return 999998
             else:
-                logger.error(f"证券{stock_code}状态{SECURITY_STATUS.get(data[stock_code]['stockStatus'],"代码未知")}")
+                logger.info(f"证券{stock_code}状态{SECURITY_STATUS.get(data[stock_code]['stockStatus'],"代码未知")}")
+
+            if instrument["InstrumentStatus"] > 0:
+                logger.error(f"证券{stock_code}处于停牌状态{instrument['InstrumentStatus']}")
+                return 999998
 
             # 不超过涨停价
             if instrument["UpStopPrice"] > 0:
