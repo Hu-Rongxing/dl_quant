@@ -5,4 +5,6 @@ def test_get_max_price():
     # 可以交易的股票价格
     get_max_ask_price("159998.SZ")
     # 停牌
-    get_max_ask_price("603305.SH")
+    get_max_ask_price("000525.SZ")
+    # 涨停
+    get_max_ask_price("300277.SZ")

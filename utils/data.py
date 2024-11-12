@@ -1,4 +1,6 @@
 import csv
+
+from prompt_toolkit.win32_types import SECURITY_ATTRIBUTES
 from xtquant import xtdata
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +10,23 @@ from typing import List, Optional
 from utils.others import is_trading_day
 from .logger import logger
 
+SECURITY_STATUS = {
+    0:"未知",
+    10:"未知",
+    11:"开盘前S",
+    12:"集合竞价时段C",
+    13:"连续交易T",
+    14:"休市B",
+    15:"闭市E",
+    16:"波动性中断V",
+    17:"临时停牌P",
+    18:"收盘集合竞价U",
+    19:"盘中集合竞价M",
+    20:"暂停交易至闭市N",
+    21:"获取字段异常",
+    22:"盘后固定价格行情",
+    23:"盘后固定价格行情完毕"
+}
 
 def get_targets_list_from_csv() -> List[str]:
     """
@@ -47,6 +66,7 @@ def get_max_ask_price(stock_code):
         data = xtdata.get_full_tick(code_list)
 
         if stock_code in data and bool(data[stock_code]):
+
             time = data[stock_code]['timetag']
             max_ask_price = max(
                 max(data[stock_code]['askPrice']),  # 最高卖价
@@ -54,15 +74,17 @@ def get_max_ask_price(stock_code):
                 data[stock_code]['lastPrice'] * 1.01  # 最新价+1%
             )
             max_ask_price = math.ceil(max_ask_price * 100) / 100
-            instrument = xtdata.get_instrument_detail(stock_code)
+            instrument = xtdata.get_instrument_detail(stock_code, iscomplete=True)
             # 成交价等于涨停价时
             if data[stock_code]['lastPrice'] == instrument["UpStopPrice"]:
                 logger.warning(f"{stock_code}涨停")
-                return 999999
+                # return 999999
 
-            if not instrument['IsTrading']:
-                logger.error(f"【{stock_code}】合约不可交易！")
+            if data[stock_code]['stockStatus'] in [0,10,11,12,14,15,16,17,20,21,22,23]:
+                logger.error(f"证券{stock_code}状态{SECURITY_STATUS.get(data[stock_code]['stockStatus'],"代码未知")}")
                 # return 999998
+            else:
+                logger.error(f"证券{stock_code}状态{SECURITY_STATUS.get(data[stock_code]['stockStatus'],"代码未知")}")
 
             # 不超过涨停价
             if instrument["UpStopPrice"] > 0:
