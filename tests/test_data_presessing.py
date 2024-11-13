@@ -34,6 +34,7 @@ def test_read_max_profile():
     p.load_max_profit()
     print(p.max_profit)
 
+
 def test_start_xttrader():
     from strategy.trader import setup_xt_trader
     xt_trader = setup_xt_trader()
